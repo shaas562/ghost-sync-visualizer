@@ -15,6 +15,9 @@
   "entrypoints": {
     "client": [
       "com.ghostsync.fabric.client.GhostSyncClient"
+    ],
+    "modmenu": [
+      "com.ghostsync.fabric.client.config.GhostSyncModMenu"
     ]
   },
   "depends": {
@@ -22,5 +25,8 @@
     "minecraft": "~26.2",
     "java": ">=25",
     "fabric-api": "*"
+  },
+  "suggests": {
+    "modmenu": "*"
   }
 }
