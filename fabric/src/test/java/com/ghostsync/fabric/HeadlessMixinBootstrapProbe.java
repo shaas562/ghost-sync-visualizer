@@ -1,7 +1,9 @@
 package com.ghostsync.fabric;
 
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import org.spongepowered.asm.launch.MixinBootstrap;
 import org.spongepowered.asm.mixin.Mixins;
@@ -18,6 +20,7 @@ public final class HeadlessMixinBootstrapProbe {
     private HeadlessMixinBootstrapProbe() {}
 
     public static void main(String[] args) throws Exception {
+        initializeFabricGlobalPropertiesForHeadlessLaunch();
         MixinBootstrap.init();
         Mixins.addConfiguration("ghostsync.client.mixins.json");
 
@@ -61,5 +64,18 @@ public final class HeadlessMixinBootstrapProbe {
         }
 
         System.out.println("Headless Mixin bootstrap/class-loading probe passed.");
+    }
+
+    /**
+     * Fabric's Mixin global-property service normally receives this map from the
+     * Knot launcher before Mixin starts. A plain Gradle JavaExec has no Knot
+     * launcher, so initialize only that exact launcher-owned property map. This
+     * uses Fabric Loader's own testing-visible state rather than mocking Mixin.
+     */
+    private static void initializeFabricGlobalPropertiesForHeadlessLaunch() throws Exception {
+        Class<?> launcherBase = Class.forName("net.fabricmc.loader.impl.launch.FabricLauncherBase");
+        Method setProperties = launcherBase.getDeclaredMethod("setProperties", java.util.Map.class);
+        setProperties.setAccessible(true);
+        setProperties.invoke(null, new HashMap<String, Object>());
     }
 }
