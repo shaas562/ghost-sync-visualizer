@@ -14,29 +14,32 @@ public final class GhostItemRenderContext {
     private GhostItemRenderContext() {}
 
     public static void begin(AbstractContainerMenu menu, Slot slot) {
-        STATE.set(new State(GhostItemOverlay.modelAlpha(menu, slot), false));
+        STATE.set(new State(
+                GhostItemOverlay.modelAlpha(menu, slot),
+                GhostItemOverlay.overlayAlpha(menu, slot)));
     }
 
     public static void beginCursor(AbstractContainerMenu menu) {
-        boolean ghost = GhostItemOverlay.isConfirmedCursor(menu);
-        STATE.set(new State(GhostItemOverlay.cursorModelAlpha(menu), ghost));
+        STATE.set(new State(
+                GhostItemOverlay.cursorModelAlpha(menu),
+                GhostItemOverlay.cursorOverlayAlpha(menu)));
     }
 
     public static float currentAlpha() {
         return STATE.get().alpha();
     }
 
-    public static boolean isCursorGhost() {
-        return STATE.get().cursorGhost();
+    public static float currentOverlayAlpha() {
+        return STATE.get().overlayAlpha();
     }
 
     public static void end() {
         STATE.remove();
     }
 
-    private record State(float alpha, boolean cursorGhost) {
+    private record State(float alpha, float overlayAlpha) {
         private static State normal() {
-            return new State(1.0f, false);
+            return new State(1.0f, 0.0f);
         }
     }
 }
