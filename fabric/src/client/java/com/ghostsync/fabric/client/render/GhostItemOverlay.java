@@ -11,9 +11,15 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 
-/** Draws read-only red overlays for item slots already confirmed as ghosts. */
+/**
+ * Temporary read-only white slot overlay for confirmed ghost items.
+ *
+ * <p>True item transparency and model-shaped whitening are implemented in the
+ * item render-state path; the transparency slider is intentionally not faked
+ * as an outline or another unrelated effect here.</p>
+ */
 public final class GhostItemOverlay {
-    private static final int RED_RGB = 0x00FF2020;
+    private static final int WHITE_RGB = 0x00FFFFFF;
 
     private GhostItemOverlay() {}
 
@@ -22,7 +28,7 @@ public final class GhostItemOverlay {
             AbstractContainerMenu menu,
             Slot slot) {
         GhostSyncConfig config = GhostSyncConfigManager.current();
-        if (!config.shouldDetectItems()) return;
+        if (!config.shouldDetectItems() || config.items.overlayStrength <= 0.0) return;
 
         Set<SlotKey> confirmed = GhostSyncRuntime.DETECTION.confirmedGhostSlots();
         if (confirmed.isEmpty()) return;
@@ -49,16 +55,11 @@ public final class GhostItemOverlay {
 
         int x = slot.x;
         int y = slot.y;
-        if (config.items.overlayStrength > 0.0) {
-            graphics.fill(x, y, x + 16, y + 16, redWithAlpha(config.items.overlayStrength));
-        }
-        if (config.items.transparencyStrength > 0.0) {
-            graphics.outline(x, y, 16, 16, redWithAlpha(config.items.transparencyStrength));
-        }
+        graphics.fill(x, y, x + 16, y + 16, whiteWithAlpha(config.items.overlayStrength));
     }
 
-    private static int redWithAlpha(double strength) {
+    private static int whiteWithAlpha(double strength) {
         int alpha = (int) Math.round(Math.max(0.0, Math.min(1.0, strength)) * 255.0);
-        return (alpha << 24) | RED_RGB;
+        return (alpha << 24) | WHITE_RGB;
     }
 }
