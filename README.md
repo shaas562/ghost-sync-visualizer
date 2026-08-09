@@ -12,11 +12,16 @@ A ghost can be confirmed only after fresh server-authoritative evidence is paire
 
 - Server block updates and multi-block section updates feed the detector after vanilla applies them.
 - Vanilla block prediction resolution supplies the server-known block state; ACK sequence numbers alone are never treated as proof.
-- Container slot/content packets and player-inventory packets provide authoritative item evidence.
-- Chunk unloads, container changes, world changes, and disconnects invalidate the relevant cached state.
+- Local place/use and attack/break interactions are watched only for client prediction changes; those observations can create `PENDING` state but cannot confirm a ghost.
+- Container slot/content packets and player-inventory packets provide authoritative numbered-slot evidence.
+- Player-inventory-backed menu slots normalize onto one connection-scoped identity, so container and player-inventory packets cannot disagree about the same physical slot.
+- The carried/cursor stack has its own menu-scoped identity. Full-container content and cursor-item packets provide authority, local carried-stack changes require newer authority, and the cursor state is invalidated with its container epoch.
+- Minecraft's creative-inventory exception is preserved: cursor-item packets ignored by vanilla in that screen are not treated as authoritative evidence by the mod.
+- Chunk unloads, container changes, world changes, disconnects, and detector disablement invalidate the relevant cached certainty.
+- Re-enabling a detector starts from fresh certainty; pre-disable confirmed ghosts cannot silently reappear.
 - Confirmed ghosts are cached separately so render paths never scan the detector or promote certainty.
 - Block visuals preserve the baked resource-pack model. Original block alpha and the white model-shaped overlay are independent controls.
-- Item visuals apply original-icon alpha at Minecraft 26.2's final GUI item-atlas blit, so ordinary and special item models use the same transparency path.
+- Item visuals apply original-icon alpha at Minecraft 26.2's final GUI item-atlas blit, so ordinary and special item models—including carried items—use the same transparency path.
 - The item white-overlay pass is independent from original-icon alpha and can be refined without changing detection semantics.
 - `K` performs a safe local refresh of tracked state. It does not fake an action or force the server to resend data.
 - Mod Menu 20.0.1 is supported as an optional settings entry point.
@@ -41,7 +46,7 @@ rm -rf dist
 docker compose run --rm --build package
 ```
 
-The remapped Fabric jar is written to `dist/`. Pull-request CI runs the same Docker verification and publishes the jar as the `ghost-sync-visualizer-26.2` workflow artifact.
+The Fabric jar is written to `dist/`. Pull-request CI runs the same Docker verification and publishes the jar as the `ghost-sync-visualizer-26.2` workflow artifact.
 
 ## Current target
 
