@@ -4,13 +4,10 @@ import com.ghostsync.core.BlockKey;
 import com.ghostsync.fabric.client.GhostSyncRuntime;
 import com.ghostsync.fabric.client.config.GhostSyncConfig;
 import com.ghostsync.fabric.client.config.GhostSyncConfigManager;
-import java.util.Collections;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.Set;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.core.BlockPos;
 
 /**
@@ -78,18 +75,18 @@ public final class GhostTerrainState {
     private static void scheduleDirtySections(Minecraft client) {
         if (DIRTY_POSITIONS.isEmpty() || client.level == null) return;
 
-        Set<SectionRenderDispatcher.RenderSection> sections = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<SectionCoordinate> sections = new HashSet<>();
         for (long packed : DIRTY_POSITIONS) {
-            SectionRenderDispatcher.RenderSection section = client.levelRenderer
-                    .viewArea()
-                    .getRenderSectionAt(BlockPos.of(packed));
-            if (section != null) sections.add(section);
+            BlockPos pos = BlockPos.of(packed);
+            sections.add(new SectionCoordinate(
+                    pos.getX() >> 4,
+                    pos.getY() >> 4,
+                    pos.getZ() >> 4));
         }
         DIRTY_POSITIONS.clear();
 
-        for (SectionRenderDispatcher.RenderSection section : sections) {
-            section.reset();
-            client.levelRenderer.scheduleSectionCompile(section);
+        for (SectionCoordinate section : sections) {
+            client.levelRenderer.setSectionDirty(section.x(), section.y(), section.z());
         }
     }
 
@@ -127,6 +124,8 @@ public final class GhostTerrainState {
         if (positions.isEmpty()) return Snapshot.EMPTY;
         return new Snapshot(Set.copyOf(positions), (float) (1.0 - config.blocks.transparencyStrength));
     }
+
+    private record SectionCoordinate(int x, int y, int z) {}
 
     private record Snapshot(Set<Long> positions, float modelAlpha) {
         private static final Snapshot EMPTY = new Snapshot(Set.of(), 1.0f);
