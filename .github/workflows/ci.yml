@@ -16,8 +16,5 @@ jobs:
       - name: Build and verify in Docker
         run: docker compose run --rm --build test
 
-      - name: Inspect Minecraft 26.2 item GUI API
-        run: docker compose run --rm test sh scripts/inspect-minecraft-gui.sh
-
       - name: Inspect Minecraft 26.2 terrain rendering API
         run: docker compose run --rm test sh scripts/inspect-rendering.sh
