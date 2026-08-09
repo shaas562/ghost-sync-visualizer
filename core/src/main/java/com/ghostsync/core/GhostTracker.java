@@ -1,8 +1,11 @@
 package com.ghostsync.core;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Version-independent certainty engine for ghost detection.
@@ -14,6 +17,7 @@ import java.util.Objects;
  */
 public final class GhostTracker<K> {
     private final Map<K, Entry> entries = new HashMap<>();
+    private final Set<K> confirmedGhosts = new HashSet<>();
     private long eventOrder;
 
     public synchronized void receiveAuthoritativeState(K key, Presence presence, long serverSequence) {
@@ -34,6 +38,7 @@ public final class GhostTracker<K> {
         entry.authoritativePresence = evidence.presence();
         entry.authoritativeServerSequence = evidence.serverSequence();
         entry.authoritativeOrder = nextOrder();
+        recomputeState(evidence.key(), entry);
     }
 
     /**
@@ -59,15 +64,16 @@ public final class GhostTracker<K> {
         entry.clientPresence = presence;
         entry.clientObservedOrder = nextOrder();
         entry.lastComparedServerSequence = serverSequence;
+        recomputeState(key, entry);
     }
 
     /**
      * Records an unverified/background client observation.
      *
-     * <p>If the visible client value changes through this path, the tracker
-     * requires newer server evidence before any mismatch can be confirmed. This
-     * is intentionally conservative because the observation may have happened
-     * while a legitimate server update is still in flight.</p>
+     * <p>If the visible client value changes into a mismatch through this path,
+     * the tracker requires newer server evidence before any mismatch can be
+     * confirmed. A change that merely returns the client to the last known
+     * authoritative value can safely stop ghost rendering immediately.</p>
      */
     public synchronized void observeClientState(K key, Presence presence) {
         Objects.requireNonNull(key, "key");
@@ -77,12 +83,17 @@ public final class GhostTracker<K> {
         long order = nextOrder();
 
         if (entry.clientPresence == null || entry.clientPresence != presence) {
-            entry.requiredAuthoritativeAfterOrder = Math.max(entry.requiredAuthoritativeAfterOrder, order);
-            entry.lastComparedServerSequence = Long.MIN_VALUE;
+            boolean createsUnverifiedMismatch = entry.authoritativePresence == null
+                    || entry.authoritativePresence != presence;
+            if (createsUnverifiedMismatch) {
+                entry.requiredAuthoritativeAfterOrder = Math.max(entry.requiredAuthoritativeAfterOrder, order);
+                entry.lastComparedServerSequence = Long.MIN_VALUE;
+            }
         }
 
         entry.clientPresence = presence;
         entry.clientObservedOrder = order;
+        recomputeState(key, entry);
     }
 
     /**
@@ -100,6 +111,7 @@ public final class GhostTracker<K> {
         entry.clientObservedOrder = order;
         entry.requiredAuthoritativeAfterOrder = Math.max(entry.requiredAuthoritativeAfterOrder, order);
         entry.lastComparedServerSequence = Long.MIN_VALUE;
+        recomputeState(key, entry);
     }
 
     /**
@@ -113,11 +125,66 @@ public final class GhostTracker<K> {
         long order = nextOrder();
         entry.requiredAuthoritativeAfterOrder = Math.max(entry.requiredAuthoritativeAfterOrder, order);
         entry.lastComparedServerSequence = Long.MIN_VALUE;
+        recomputeState(key, entry);
     }
 
     public synchronized SyncState getState(K key) {
         Entry entry = entries.get(key);
-        if (entry == null || entry.clientPresence == null || entry.authoritativePresence == null) {
+        return entry == null ? SyncState.UNKNOWN : entry.state;
+    }
+
+    /**
+     * Snapshot intended for a rendering cache. The returned set is detached from
+     * the mutable tracker and contains only fully confirmed ghosts.
+     */
+    public synchronized Set<K> confirmedGhostKeys() {
+        return Set.copyOf(confirmedGhosts);
+    }
+
+    public synchronized void invalidate(K key) {
+        entries.remove(key);
+        confirmedGhosts.remove(key);
+    }
+
+    /**
+     * Invalidates a scope, such as all positions in an unloaded chunk or all
+     * slots belonging to a closed container.
+     */
+    public synchronized int invalidateMatching(Predicate<K> predicate) {
+        Objects.requireNonNull(predicate, "predicate");
+        int before = entries.size();
+        entries.keySet().removeIf(key -> {
+            if (!predicate.test(key)) {
+                return false;
+            }
+            confirmedGhosts.remove(key);
+            return true;
+        });
+        return before - entries.size();
+    }
+
+    public synchronized void reset() {
+        entries.clear();
+        confirmedGhosts.clear();
+        eventOrder = 0L;
+    }
+
+    public synchronized int trackedEntryCount() {
+        return entries.size();
+    }
+
+    private void recomputeState(K key, Entry entry) {
+        SyncState next = calculateState(entry);
+        entry.state = next;
+        if (next == SyncState.CONFIRMED_GHOST) {
+            confirmedGhosts.add(key);
+        } else {
+            confirmedGhosts.remove(key);
+        }
+    }
+
+    private SyncState calculateState(Entry entry) {
+        if (entry.clientPresence == null || entry.authoritativePresence == null) {
             return SyncState.UNKNOWN;
         }
 
@@ -141,19 +208,6 @@ public final class GhostTracker<K> {
         return SyncState.UNKNOWN;
     }
 
-    public synchronized void invalidate(K key) {
-        entries.remove(key);
-    }
-
-    public synchronized void reset() {
-        entries.clear();
-        eventOrder = 0L;
-    }
-
-    public synchronized int trackedEntryCount() {
-        return entries.size();
-    }
-
     private long nextOrder() {
         if (eventOrder == Long.MAX_VALUE) {
             throw new IllegalStateException("Ghost tracker event sequence exhausted");
@@ -169,5 +223,6 @@ public final class GhostTracker<K> {
         private long authoritativeOrder;
         private long requiredAuthoritativeAfterOrder;
         private long lastComparedServerSequence = Long.MIN_VALUE;
+        private SyncState state = SyncState.UNKNOWN;
     }
 }
