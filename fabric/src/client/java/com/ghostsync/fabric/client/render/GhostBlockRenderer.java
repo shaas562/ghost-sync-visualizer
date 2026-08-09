@@ -26,27 +26,23 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
-/** Read-only renderer for confirmed block ghosts. */
+/**
+ * Temporary depth-tested white overlay for confirmed block ghosts.
+ *
+ * <p>This deliberately does not implement the transparency slider by drawing
+ * through walls. True block transparency is implemented at terrain tessellation
+ * time so the original textured model itself becomes translucent.</p>
+ */
 public final class GhostBlockRenderer {
-    private static final RenderPipeline THROUGH_WALLS = RenderPipelines.register(
-            RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
-                    .withLocation(Identifier.fromNamespaceAndPath(
-                            "ghostsync", "pipeline/confirmed_ghost_through_walls"))
-                    .withDepthStencilState(Optional.empty())
-                    .build());
-
     private static final Vector4f COLOR_MODULATOR = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
     private static final Vector3f MODEL_OFFSET = new Vector3f();
     private static final Matrix4f TEXTURE_MATRIX = new Matrix4f();
-    private static final StagedVertexBuffer THROUGH_WALL_BUFFER = new StagedVertexBuffer(
-            () -> "Ghost Sync through-wall block overlay", RenderType.SMALL_BUFFER_SIZE);
     private static final StagedVertexBuffer VISIBLE_BUFFER = new StagedVertexBuffer(
             () -> "Ghost Sync visible block overlay", RenderType.SMALL_BUFFER_SIZE);
 
@@ -65,7 +61,10 @@ public final class GhostBlockRenderer {
     private static void extract(LevelExtractionContext context) {
         Minecraft client = Minecraft.getInstance();
         GhostSyncConfig config = GhostSyncConfigManager.current();
-        if (!config.shouldDetectBlocks() || client.level == null || client.player == null) {
+        if (!config.shouldDetectBlocks()
+                || config.blocks.overlayStrength <= 0.0
+                || client.level == null
+                || client.player == null) {
             frameState = FrameState.EMPTY;
             return;
         }
@@ -89,21 +88,13 @@ public final class GhostBlockRenderer {
             boxes.add(new BlockBox(key.x(), key.y(), key.z()));
         }
 
-        frameState = new FrameState(
-                List.copyOf(boxes),
-                (float) config.blocks.overlayStrength,
-                (float) config.blocks.transparencyStrength);
+        frameState = new FrameState(List.copyOf(boxes), (float) config.blocks.overlayStrength);
     }
 
     private static void render(LevelRenderContext context) {
         FrameState state = frameState;
-        if (state.boxes().isEmpty()) return;
-        if (state.throughWallAlpha() > 0.0f) {
-            renderLayer(context, THROUGH_WALLS, THROUGH_WALL_BUFFER, state, state.throughWallAlpha());
-        }
-        if (state.overlayAlpha() > 0.0f) {
-            renderLayer(context, RenderPipelines.DEBUG_FILLED_BOX, VISIBLE_BUFFER, state, state.overlayAlpha());
-        }
+        if (state.boxes().isEmpty() || state.overlayAlpha() <= 0.0f) return;
+        renderLayer(context, RenderPipelines.DEBUG_FILLED_BOX, VISIBLE_BUFFER, state, state.overlayAlpha());
     }
 
     private static void renderLayer(
@@ -141,15 +132,12 @@ public final class GhostBlockRenderer {
         float maxX = x + 1.0f;
         float maxY = y + 1.0f;
         float maxZ = z + 1.0f;
-        float red = 1.0f;
-        float green = 0.08f;
-        float blue = 0.08f;
-        addQuad(buffer, matrix, x, y, maxZ, maxX, y, maxZ, maxX, maxY, maxZ, x, maxY, maxZ, red, green, blue, alpha);
-        addQuad(buffer, matrix, maxX, y, z, x, y, z, x, maxY, z, maxX, maxY, z, red, green, blue, alpha);
-        addQuad(buffer, matrix, x, y, z, x, y, maxZ, x, maxY, maxZ, x, maxY, z, red, green, blue, alpha);
-        addQuad(buffer, matrix, maxX, y, maxZ, maxX, y, z, maxX, maxY, z, maxX, maxY, maxZ, red, green, blue, alpha);
-        addQuad(buffer, matrix, x, maxY, maxZ, maxX, maxY, maxZ, maxX, maxY, z, x, maxY, z, red, green, blue, alpha);
-        addQuad(buffer, matrix, x, y, z, maxX, y, z, maxX, y, maxZ, x, y, maxZ, red, green, blue, alpha);
+        addQuad(buffer, matrix, x, y, maxZ, maxX, y, maxZ, maxX, maxY, maxZ, x, maxY, maxZ, alpha);
+        addQuad(buffer, matrix, maxX, y, z, x, y, z, x, maxY, z, maxX, maxY, z, alpha);
+        addQuad(buffer, matrix, x, y, z, x, y, maxZ, x, maxY, maxZ, x, maxY, z, alpha);
+        addQuad(buffer, matrix, maxX, y, maxZ, maxX, y, z, maxX, maxY, z, maxX, maxY, maxZ, alpha);
+        addQuad(buffer, matrix, x, maxY, maxZ, maxX, maxY, maxZ, maxX, maxY, z, x, maxY, z, alpha);
+        addQuad(buffer, matrix, x, y, z, maxX, y, z, maxX, y, maxZ, x, y, maxZ, alpha);
     }
 
     private static void addQuad(
@@ -159,11 +147,11 @@ public final class GhostBlockRenderer {
             float x2, float y2, float z2,
             float x3, float y3, float z3,
             float x4, float y4, float z4,
-            float red, float green, float blue, float alpha) {
-        buffer.addVertex(matrix, x1, y1, z1).setColor(red, green, blue, alpha);
-        buffer.addVertex(matrix, x2, y2, z2).setColor(red, green, blue, alpha);
-        buffer.addVertex(matrix, x3, y3, z3).setColor(red, green, blue, alpha);
-        buffer.addVertex(matrix, x4, y4, z4).setColor(red, green, blue, alpha);
+            float alpha) {
+        buffer.addVertex(matrix, x1, y1, z1).setColor(1.0f, 1.0f, 1.0f, alpha);
+        buffer.addVertex(matrix, x2, y2, z2).setColor(1.0f, 1.0f, 1.0f, alpha);
+        buffer.addVertex(matrix, x3, y3, z3).setColor(1.0f, 1.0f, 1.0f, alpha);
+        buffer.addVertex(matrix, x4, y4, z4).setColor(1.0f, 1.0f, 1.0f, alpha);
     }
 
     private static void executeDraw(Minecraft client, StagedVertexBuffer.ExecuteInfo info, RenderPipeline pipeline) {
@@ -190,12 +178,11 @@ public final class GhostBlockRenderer {
     }
 
     public static void close() {
-        THROUGH_WALL_BUFFER.close();
         VISIBLE_BUFFER.close();
     }
 
     private record BlockBox(int x, int y, int z) {}
-    private record FrameState(List<BlockBox> boxes, float overlayAlpha, float throughWallAlpha) {
-        private static final FrameState EMPTY = new FrameState(List.of(), 0.0f, 0.0f);
+    private record FrameState(List<BlockBox> boxes, float overlayAlpha) {
+        private static final FrameState EMPTY = new FrameState(List.of(), 0.0f);
     }
 }
