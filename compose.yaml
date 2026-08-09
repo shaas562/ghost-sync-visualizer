@@ -3,3 +3,15 @@ services:
     build:
       context: .
     command: gradle --no-daemon verifyMilestone1
+    volumes:
+      - gradle-cache:/home/gradle/.gradle
+
+  inspect-packets:
+    build:
+      context: .
+    command: sh -lc "gradle --no-daemon :fabric:compileClientJava >/dev/null && sh scripts/inspect-minecraft-packets.sh"
+    volumes:
+      - gradle-cache:/home/gradle/.gradle
+
+volumes:
+  gradle-cache:
