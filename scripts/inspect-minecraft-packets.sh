@@ -1,18 +1,33 @@
 #!/bin/sh
 set -eu
 
-CACHE_ROOT="${GRADLE_USER_HOME:-/home/gradle/.gradle}"
+GRADLE_HOME="${GRADLE_USER_HOME:-/home/gradle/.gradle}"
+LOOM_CACHE="$GRADLE_HOME/caches/fabric-loom"
 PATTERN='net/minecraft/(client/multiplayer/ClientPacketListener|network/protocol/game/Clientbound[^/]*(Block|Section|Chunk|Container|Slot)[^/]*)\.class$'
 
-found=0
-find "$CACHE_ROOT" -type f -name '*.jar' 2>/dev/null | while IFS= read -r jar_file; do
+if [ ! -d "$LOOM_CACHE" ]; then
+    echo "Fabric Loom cache not found at $LOOM_CACHE" >&2
+    exit 1
+fi
+
+printf '=== Matching Minecraft 26.2 packet classes ===\n'
+find "$LOOM_CACHE" -type f -name '*.jar' 2>/dev/null | while IFS= read -r jar_file; do
     matches=$(jar tf "$jar_file" 2>/dev/null | grep -E "$PATTERN" || true)
     if [ -n "$matches" ]; then
-        found=1
         printf '\n=== %s ===\n' "$jar_file"
         printf '%s\n' "$matches"
     fi
 done
+
+find_class_jar() {
+    class_path="$1"
+    find "$LOOM_CACHE" -type f -name '*.jar' 2>/dev/null | while IFS= read -r jar_file; do
+        if jar tf "$jar_file" 2>/dev/null | grep -q "^${class_path}\.class$"; then
+            printf '%s\n' "$jar_file"
+            break
+        fi
+    done
+}
 
 printf '\n=== Candidate signatures ===\n'
 for class_name in \
@@ -24,13 +39,7 @@ for class_name in \
     net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket
 do
     class_path=$(printf '%s' "$class_name" | tr '.' '/')
-    class_jar=''
-    for jar_file in $(find "$CACHE_ROOT" -type f -name '*.jar' 2>/dev/null); do
-        if jar tf "$jar_file" 2>/dev/null | grep -q "^${class_path}\.class$"; then
-            class_jar="$jar_file"
-            break
-        fi
-    done
+    class_jar=$(find_class_jar "$class_path" || true)
 
     if [ -n "$class_jar" ]; then
         printf '\n--- %s ---\n' "$class_name"
