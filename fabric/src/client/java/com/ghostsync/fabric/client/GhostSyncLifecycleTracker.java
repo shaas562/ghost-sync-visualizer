@@ -3,6 +3,7 @@ package com.ghostsync.fabric.client;
 import com.ghostsync.core.Presence;
 import com.ghostsync.core.SlotKey;
 import com.ghostsync.fabric.client.config.GhostSyncConfigManager;
+import com.ghostsync.fabric.client.render.GhostTerrainState;
 import java.util.HashMap;
 import java.util.Map;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -30,11 +31,13 @@ public final class GhostSyncLifecycleTracker {
     public static void initialize() {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             resetLocalSnapshots();
+            GhostTerrainState.discardForWorldChange();
             GhostSyncRuntime.beginConnection();
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             resetLocalSnapshots();
+            GhostTerrainState.discardForWorldChange();
             GhostSyncRuntime.endConnection();
         });
 
@@ -44,6 +47,7 @@ public final class GhostSyncLifecycleTracker {
     private static void onEndTick(Minecraft client) {
         ClientLevel currentLevel = client.level;
         if (currentLevel != previousLevel) {
+            GhostTerrainState.discardForWorldChange();
             if (currentLevel != null) {
                 GhostSyncRuntime.beginWorld();
             }
@@ -78,9 +82,7 @@ public final class GhostSyncLifecycleTracker {
                     ? Presence.ABSENT
                     : Presence.PRESENT;
             Presence previous = PREVIOUS_MENU_PRESENCE.put(slotIndex, presence);
-            if (previous == presence) {
-                continue;
-            }
+            if (previous == presence) continue;
 
             SlotKey key = new SlotKey(
                     GhostSyncRuntime.connectionEpoch(),
@@ -97,18 +99,14 @@ public final class GhostSyncLifecycleTracker {
                     ? Presence.ABSENT
                     : Presence.PRESENT;
             Presence previous = PREVIOUS_PLAYER_INVENTORY_PRESENCE.put(slotIndex, presence);
-            if (previous == presence) {
-                continue;
-            }
+            if (previous == presence) continue;
             GhostSyncRuntime.DETECTION.slots().observeClientState(
                     GhostSyncRuntime.playerInventoryKey(slotIndex), presence);
         }
     }
 
     private static void forgetPreviousMenu() {
-        if (previousMenu == null) {
-            return;
-        }
+        if (previousMenu == null) return;
         GhostSyncRuntime.DETECTION.closeContainer(
                 GhostSyncRuntime.connectionEpoch(),
                 previousMenuEpoch,
