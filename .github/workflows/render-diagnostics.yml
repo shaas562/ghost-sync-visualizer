@@ -20,6 +20,17 @@ jobs:
         run: |
           docker compose run --rm test sh -lc 'gradle --no-daemon :fabric:compileClientJava' > compile-client.txt 2>&1 || true
 
+      - name: Validate full Fabric build and shader packaging
+        run: |
+          docker compose run --rm test sh -lc '
+            set -eu
+            gradle --no-daemon :fabric:build
+            jar_file=$(find fabric/build/libs -maxdepth 1 -type f -name "*.jar" ! -name "*-sources.jar" | head -n 1)
+            test -n "$jar_file"
+            jar tf "$jar_file" | grep -F "assets/ghostsync/shaders/core/item_white_silhouette.fsh"
+            echo "JAR=$jar_file"
+          ' > silhouette-build.txt 2>&1
+
       - name: Capture terrain API
         run: |
           docker compose run --rm test sh scripts/inspect-rendering.sh > inspect-rendering.txt 2>&1 || true
@@ -38,6 +49,7 @@ jobs:
           name: render-diagnostics
           path: |
             compile-client.txt
+            silhouette-build.txt
             inspect-rendering.txt
             inspect-items.txt
             inspect-item-silhouette.txt
