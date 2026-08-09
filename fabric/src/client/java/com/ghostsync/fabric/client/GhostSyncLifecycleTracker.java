@@ -2,6 +2,7 @@ package com.ghostsync.fabric.client;
 
 import com.ghostsync.core.Presence;
 import com.ghostsync.core.SlotKey;
+import com.ghostsync.fabric.client.config.GhostSyncConfig;
 import com.ghostsync.fabric.client.config.GhostSyncConfigManager;
 import com.ghostsync.fabric.client.render.GhostTerrainState;
 import java.util.HashMap;
@@ -24,10 +25,16 @@ public final class GhostSyncLifecycleTracker {
     private static ClientLevel previousLevel;
     private static AbstractContainerMenu previousMenu;
     private static long previousMenuEpoch;
+    private static boolean blockDetectionEnabled;
+    private static boolean itemDetectionEnabled;
 
     private GhostSyncLifecycleTracker() {}
 
     public static void initialize() {
+        GhostSyncConfig config = GhostSyncConfigManager.current();
+        blockDetectionEnabled = config.shouldDetectBlocks();
+        itemDetectionEnabled = config.shouldDetectItems();
+
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             resetLocalSnapshots();
             GhostTerrainState.discardForWorldChange();
@@ -44,6 +51,9 @@ public final class GhostSyncLifecycleTracker {
     }
 
     private static void onEndTick(Minecraft client) {
+        GhostSyncConfig config = GhostSyncConfigManager.current();
+        applyDetectionEnablement(config);
+
         ClientLevel currentLevel = client.level;
         if (currentLevel != previousLevel) {
             GhostTerrainState.discardForWorldChange();
@@ -67,10 +77,30 @@ public final class GhostSyncLifecycleTracker {
             PREVIOUS_MENU_PRESENCE.clear();
         }
 
-        if (GhostSyncConfigManager.current().shouldDetectItems()) {
+        if (config.shouldDetectItems()) {
             observeCurrentMenu(currentMenu);
             observePlayerInventory(client.player.getInventory());
         }
+    }
+
+    /**
+     * Turning a detector off is a certainty boundary. Its old confirmations are
+     * discarded immediately so re-enabling cannot resurrect stale ghosts without
+     * fresh server-authoritative evidence.
+     */
+    private static void applyDetectionEnablement(GhostSyncConfig config) {
+        boolean detectBlocks = config.shouldDetectBlocks();
+        boolean detectItems = config.shouldDetectItems();
+
+        if (blockDetectionEnabled && !detectBlocks) {
+            GhostSyncRuntime.DETECTION.resetBlockState();
+        }
+        if (itemDetectionEnabled && !detectItems) {
+            GhostSyncRuntime.DETECTION.resetSlotState();
+        }
+
+        blockDetectionEnabled = detectBlocks;
+        itemDetectionEnabled = detectItems;
     }
 
     private static void observeCurrentMenu(AbstractContainerMenu menu) {

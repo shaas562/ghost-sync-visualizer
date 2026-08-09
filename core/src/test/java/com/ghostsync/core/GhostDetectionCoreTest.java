@@ -48,6 +48,25 @@ class GhostDetectionCoreTest {
     }
 
     @Test
+    void individualDetectorResetsDoNotCrossClear() {
+        GhostDetectionCore core = new GhostDetectionCore();
+        BlockKey block = new BlockKey(1, 1, "minecraft:overworld", 0, 64, 0);
+        SlotKey slot = new SlotKey(1, 0, -1, 3);
+
+        confirm(core.blocks(), block, 1);
+        confirm(core.slots(), slot, 1);
+
+        core.resetBlockState();
+        assertEquals(SyncState.UNKNOWN, core.blocks().getState(block));
+        assertEquals(SyncState.CONFIRMED_GHOST, core.slots().getState(slot));
+
+        confirm(core.blocks(), block, 2);
+        core.resetSlotState();
+        assertEquals(SyncState.CONFIRMED_GHOST, core.blocks().getState(block));
+        assertEquals(SyncState.UNKNOWN, core.slots().getState(slot));
+    }
+
+    @Test
     void worldResetKeepsSlotTrackingButConnectionResetClearsEverything() {
         GhostDetectionCore core = new GhostDetectionCore();
         BlockKey block = new BlockKey(1, 1, "minecraft:overworld", 0, 64, 0);

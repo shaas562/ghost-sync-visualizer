@@ -50,12 +50,22 @@ public final class GhostDetectionCore {
                         && key.containerId() == containerId);
     }
 
-    public void resetWorldState() {
+    /** Clears only block certainty; item certainty is intentionally untouched. */
+    public void resetBlockState() {
         blocks.reset();
     }
 
-    public void resetConnectionState() {
-        blocks.reset();
+    /** Clears only item/slot certainty; block certainty is intentionally untouched. */
+    public void resetSlotState() {
         slots.reset();
+    }
+
+    public void resetWorldState() {
+        resetBlockState();
+    }
+
+    public void resetConnectionState() {
+        resetBlockState();
+        resetSlotState();
     }
 }
