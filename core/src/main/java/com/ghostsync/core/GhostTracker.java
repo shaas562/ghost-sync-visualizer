@@ -7,41 +7,82 @@ import java.util.Objects;
 /**
  * Version-independent certainty engine for ghost detection.
  *
- * <p>The tracker deliberately treats local mutations as pending until a newer
- * authoritative observation arrives. Time alone can never confirm a ghost.</p>
+ * <p>A mismatch can become {@link SyncState#CONFIRMED_GHOST} only when the
+ * client state was explicitly compared after Minecraft applied the same fresh
+ * server evidence. Background observations and elapsed time can never confirm
+ * a ghost.</p>
  */
 public final class GhostTracker<K> {
     private final Map<K, Entry> entries = new HashMap<>();
     private long eventOrder;
 
-    public synchronized void receiveAuthoritativeState(K key, Presence presence, long revision) {
-        Objects.requireNonNull(key, "key");
-        Objects.requireNonNull(presence, "presence");
+    public synchronized void receiveAuthoritativeState(K key, Presence presence, long serverSequence) {
+        receiveAuthoritativeEvidence(new AuthoritativeEvidence<>(key, presence, serverSequence));
+    }
 
-        Entry entry = entries.computeIfAbsent(key, ignored -> new Entry());
-        long order = nextOrder();
+    public synchronized void receiveAuthoritativeEvidence(AuthoritativeEvidence<K> evidence) {
+        Objects.requireNonNull(evidence, "evidence");
 
-        if (revision < entry.authoritativeRevision) {
+        Entry entry = entries.computeIfAbsent(evidence.key(), ignored -> new Entry());
+
+        // A replayed or older server observation must never satisfy a client-side
+        // pending barrier. Adapters therefore assign strictly increasing sequence ids.
+        if (evidence.serverSequence() <= entry.authoritativeServerSequence) {
             return;
         }
 
-        entry.authoritativePresence = presence;
-        entry.authoritativeRevision = revision;
-        entry.authoritativeOrder = order;
+        entry.authoritativePresence = evidence.presence();
+        entry.authoritativeServerSequence = evidence.serverSequence();
+        entry.authoritativeOrder = nextOrder();
     }
 
     /**
-     * Records the client state as an observation, typically after Minecraft has
-     * applied an incoming authoritative packet. This does not create a new
-     * freshness requirement by itself.
+     * Records the client state after Minecraft has applied the authoritative
+     * server update identified by {@code serverSequence}. This is the only
+     * observation path that can make a mismatch a confirmed ghost.
+     *
+     * <p>If a newer server update has already replaced the referenced evidence,
+     * the stale comparison is ignored completely.</p>
+     */
+    public synchronized void observeClientAfterAuthoritativeState(
+            K key,
+            Presence presence,
+            long serverSequence) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(presence, "presence");
+
+        Entry entry = entries.get(key);
+        if (entry == null || entry.authoritativeServerSequence != serverSequence) {
+            return;
+        }
+
+        entry.clientPresence = presence;
+        entry.clientObservedOrder = nextOrder();
+        entry.lastComparedServerSequence = serverSequence;
+    }
+
+    /**
+     * Records an unverified/background client observation.
+     *
+     * <p>If the visible client value changes through this path, the tracker
+     * requires newer server evidence before any mismatch can be confirmed. This
+     * is intentionally conservative because the observation may have happened
+     * while a legitimate server update is still in flight.</p>
      */
     public synchronized void observeClientState(K key, Presence presence) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(presence, "presence");
 
         Entry entry = entries.computeIfAbsent(key, ignored -> new Entry());
+        long order = nextOrder();
+
+        if (entry.clientPresence == null || entry.clientPresence != presence) {
+            entry.requiredAuthoritativeAfterOrder = Math.max(entry.requiredAuthoritativeAfterOrder, order);
+            entry.lastComparedServerSequence = Long.MIN_VALUE;
+        }
+
         entry.clientPresence = presence;
-        entry.clientObservedOrder = nextOrder();
+        entry.clientObservedOrder = order;
     }
 
     /**
@@ -58,6 +99,7 @@ public final class GhostTracker<K> {
         entry.clientPresence = presence;
         entry.clientObservedOrder = order;
         entry.requiredAuthoritativeAfterOrder = Math.max(entry.requiredAuthoritativeAfterOrder, order);
+        entry.lastComparedServerSequence = Long.MIN_VALUE;
     }
 
     /**
@@ -70,6 +112,7 @@ public final class GhostTracker<K> {
         Entry entry = entries.computeIfAbsent(key, ignored -> new Entry());
         long order = nextOrder();
         entry.requiredAuthoritativeAfterOrder = Math.max(entry.requiredAuthoritativeAfterOrder, order);
+        entry.lastComparedServerSequence = Long.MIN_VALUE;
     }
 
     public synchronized SyncState getState(K key) {
@@ -86,10 +129,15 @@ public final class GhostTracker<K> {
             return SyncState.MATCHED;
         }
 
-        if (entry.clientPresence == Presence.PRESENT && entry.authoritativePresence == Presence.ABSENT) {
-            return SyncState.CONFIRMED_GHOST;
+        if (entry.clientPresence == Presence.PRESENT
+                && entry.authoritativePresence == Presence.ABSENT) {
+            if (entry.lastComparedServerSequence == entry.authoritativeServerSequence) {
+                return SyncState.CONFIRMED_GHOST;
+            }
+            return SyncState.PENDING;
         }
 
+        // Reverse ghosts (server present, client absent) are intentionally out of scope.
         return SyncState.UNKNOWN;
     }
 
@@ -117,8 +165,9 @@ public final class GhostTracker<K> {
         private Presence clientPresence;
         private long clientObservedOrder;
         private Presence authoritativePresence;
-        private long authoritativeRevision = Long.MIN_VALUE;
+        private long authoritativeServerSequence = Long.MIN_VALUE;
         private long authoritativeOrder;
         private long requiredAuthoritativeAfterOrder;
+        private long lastComparedServerSequence = Long.MIN_VALUE;
     }
 }
