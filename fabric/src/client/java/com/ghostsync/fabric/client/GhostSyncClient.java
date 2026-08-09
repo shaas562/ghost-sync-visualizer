@@ -9,6 +9,7 @@ public final class GhostSyncClient implements ClientModInitializer {
     public void onInitializeClient() {
         GhostSyncConfigManager.load();
         GhostSyncLifecycleTracker.initialize();
+        GhostSyncBlockInteractionTracker.initialize();
         GhostSyncKeyMappings.initialize();
     }
 }
