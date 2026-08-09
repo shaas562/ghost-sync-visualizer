@@ -24,28 +24,26 @@ print_code() {
     printf '\n=== bytecode %s.%s ===\n' "$class_name" "$method"
     javap -classpath "$CP" -c -p "$class_name" 2>/dev/null \
         | sed -n "/${method}(/,/^[[:space:]]*\(public\|private\|protected\) /p" \
-        | head -n 360 || true
+        | head -n 420 || true
 }
 
 for class_name in \
-    net.minecraft.client.renderer.LevelRenderer \
-    net.minecraft.client.renderer.chunk.SectionRenderDispatcher \
+    net.minecraft.client.renderer.ViewArea \
+    net.minecraft.client.RotatingSectionStorage \
     'net.minecraft.client.renderer.chunk.SectionRenderDispatcher$RenderSection' \
     net.minecraft.client.renderer.chunk.SectionCompiler \
-    net.minecraft.client.renderer.chunk.ChunkSectionLayer \
-    net.minecraft.client.resources.model.geometry.BakedQuad \
-    'net.minecraft.client.resources.model.geometry.BakedQuad$MaterialInfo' \
     com.mojang.blaze3d.vertex.QuadInstance \
     com.mojang.blaze3d.vertex.VertexConsumer \
-    net.minecraft.util.ARGB \
-    net.minecraft.util.FastColor \
-    'net.minecraft.util.FastColor$ARGB32'
+    com.mojang.blaze3d.vertex.VertexFormatElement \
+    com.mojang.blaze3d.vertex.DefaultVertexFormat
 do
     print_sig "$class_name"
 done
 
-print_code com.mojang.blaze3d.vertex.QuadInstance setColor
-print_code com.mojang.blaze3d.vertex.VertexConsumer putBlockBakedQuad
-print_code net.minecraft.client.renderer.LevelRenderer setSectionDirty
-print_code net.minecraft.client.renderer.LevelRenderer setBlockDirty
-print_code net.minecraft.client.renderer.chunk.SectionCompiler 'lambda$compile$0'
+print_code com.mojang.blaze3d.vertex.QuadInstance '<init>'
+print_code com.mojang.blaze3d.vertex.QuadInstance multiplyColor
+print_code com.mojang.blaze3d.vertex.QuadInstance scaleColor
+print_code com.mojang.blaze3d.vertex.VertexConsumer 'setColor(float'
+print_code net.minecraft.client.renderer.ViewArea setDirty
+print_code net.minecraft.client.renderer.ViewArea getRenderSectionAt
+print_code net.minecraft.client.RotatingSectionStorage setDirty
