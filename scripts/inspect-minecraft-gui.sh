@@ -24,11 +24,11 @@ print_code() {
     printf '\n=== bytecode %s.%s ===\n' "$class_name" "$method"
     javap -classpath "$CP" -c -p "$class_name" 2>/dev/null \
         | sed -n "/${method}(/,/^[[:space:]]*\(public\|private\|protected\) /p" \
-        | head -n 600 || true
+        | head -n 700 || true
 }
 
 printf '\n=== GUI/item state candidate classes ===\n'
-jar tf "$MC_JAR" | grep -E 'net/minecraft/client/renderer/state/gui/.*Item.*\.class$|net/minecraft/client/gui/render/.*Item.*\.class$' | head -n 160 || true
+jar tf "$MC_JAR" | grep -E 'net/minecraft/client/renderer/state/gui/.*Item.*\.class$|net/minecraft/client/gui/render/.*Item.*\.class$' | head -n 200 || true
 
 for class_name in \
     net.minecraft.client.renderer.item.ItemStackRenderState \
@@ -37,7 +37,9 @@ for class_name in \
     net.minecraft.client.gui.GuiGraphicsExtractor \
     net.minecraft.client.renderer.state.gui.GuiRenderState \
     net.minecraft.client.renderer.state.gui.GuiItemRenderState \
-    net.minecraft.client.gui.render.state.GuiItemRenderState \
+    net.minecraft.client.gui.render.GuiRenderer \
+    net.minecraft.client.gui.render.GuiItemAtlas \
+    'net.minecraft.client.gui.render.GuiItemAtlas$SlotView' \
     net.fabricmc.fabric.api.client.renderer.v1.render.FabricLayerRenderState \
     net.fabricmc.fabric.api.client.renderer.v1.render.FabricItemStackRenderState
 do
@@ -50,9 +52,21 @@ print_code 'net.minecraft.client.renderer.item.ItemStackRenderState$LayerRenderS
 printf '\n=== full private GUI item extraction path ===\n'
 javap -classpath "$CP" -c -p net.minecraft.client.gui.GuiGraphicsExtractor 2>/dev/null \
     | sed -n '/private void item(net.minecraft.world.entity.LivingEntity, net.minecraft.world.level.Level, net.minecraft.world.item.ItemStack, int, int, int);/,/public void fakeItem/p' \
-    | head -n 700 || true
+    | head -n 800 || true
 
 printf '\n=== GuiRenderState bytecode around item states ===\n'
 javap -classpath "$CP" -c -p net.minecraft.client.renderer.state.gui.GuiRenderState 2>/dev/null \
-    | grep -B 60 -A 100 -E 'ItemStackRenderState|GuiItem|ItemRender' \
-    | head -n 520 || true
+    | grep -B 80 -A 140 -E 'ItemStackRenderState|GuiItem|ItemRender' \
+    | head -n 700 || true
+
+print_code net.minecraft.client.gui.render.GuiRenderer renderItem
+print_code net.minecraft.client.gui.render.GuiRenderer prepareItem
+print_code net.minecraft.client.gui.render.GuiRenderer prepareItemInitially
+print_code net.minecraft.client.gui.render.GuiRenderer render
+print_code net.minecraft.client.gui.render.GuiItemAtlas prepareItem
+print_code net.minecraft.client.gui.render.GuiItemAtlas renderItem
+
+printf '\n=== GuiRenderer bytecode around GuiItemAtlas ===\n'
+javap -classpath "$CP" -c -p net.minecraft.client.gui.render.GuiRenderer 2>/dev/null \
+    | grep -B 120 -A 180 -E 'GuiItemAtlas|SlotView|GuiItemRenderState' \
+    | head -n 1000 || true
