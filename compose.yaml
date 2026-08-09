@@ -6,6 +6,14 @@ services:
     volumes:
       - gradle-cache:/home/gradle/.gradle
 
+  package:
+    build:
+      context: .
+    command: gradle --no-daemon :fabric:packageMod
+    volumes:
+      - gradle-cache:/home/gradle/.gradle
+      - ./dist:/workspace/dist
+
   inspect-packets:
     build:
       context: .

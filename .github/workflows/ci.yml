@@ -16,10 +16,15 @@ jobs:
       - name: Build and verify in Docker
         run: docker compose run --rm --build test
 
-      - name: Inspect Minecraft 26.2 terrain rendering API
-        if: always()
-        run: docker compose run --rm test sh scripts/inspect-rendering.sh
+      - name: Package installable mod jar in Docker
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          docker compose run --rm --build package
 
-      - name: Inspect Minecraft 26.2 item rendering API
-        if: always()
-        run: docker compose run --rm test sh scripts/inspect-minecraft-gui.sh
+      - name: Upload Minecraft 26.2 mod jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-sync-visualizer-26.2
+          path: dist/*.jar
+          if-no-files-found: error

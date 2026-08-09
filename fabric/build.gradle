@@ -57,3 +57,10 @@ jar {
         rename { "${it}_${project.archives_base_name}" }
     }
 }
+
+/** Copies the remapped, installable Fabric jar into the repository dist folder. */
+tasks.register('packageMod', Copy) {
+    dependsOn tasks.named('remapJar')
+    from(tasks.named('remapJar').flatMap { it.archiveFile })
+    into(rootProject.layout.projectDirectory.dir('dist'))
+}
