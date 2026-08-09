@@ -4,10 +4,13 @@ import com.ghostsync.core.BlockKey;
 import com.ghostsync.fabric.client.GhostSyncRuntime;
 import com.ghostsync.fabric.client.config.GhostSyncConfig;
 import com.ghostsync.fabric.client.config.GhostSyncConfigManager;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Set;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.core.BlockPos;
 
 /**
@@ -15,8 +18,8 @@ import net.minecraft.core.BlockPos;
  *
  * <p>The section compiler must not scan the synchronized detection map for every
  * ordinary block. This class reduces the hot-path query to an immutable packed
- * position set plus one alpha value. It also records exactly which positions
- * need their section rebuilt when confirmation/config/range changes.</p>
+ * position set plus one alpha value and rebuilds only sections whose ghost
+ * membership/alpha changed.</p>
  */
 public final class GhostTerrainState {
     private static volatile Snapshot snapshot = Snapshot.EMPTY;
@@ -40,13 +43,6 @@ public final class GhostTerrainState {
         return snapshot.positions().contains(pos.asLong());
     }
 
-    public static synchronized Set<Long> consumeDirtyPositions() {
-        if (DIRTY_POSITIONS.isEmpty()) return Set.of();
-        Set<Long> result = Set.copyOf(DIRTY_POSITIONS);
-        DIRTY_POSITIONS.clear();
-        return result;
-    }
-
     public static synchronized void clear() {
         Snapshot previous = snapshot;
         if (!previous.positions().isEmpty()) DIRTY_POSITIONS.addAll(previous.positions());
@@ -56,20 +52,41 @@ public final class GhostTerrainState {
     private static synchronized void refresh(Minecraft client) {
         Snapshot previous = snapshot;
         Snapshot next = buildSnapshot(client);
-        if (previous.equals(next)) return;
 
-        if (Float.compare(previous.modelAlpha(), next.modelAlpha()) != 0) {
-            DIRTY_POSITIONS.addAll(previous.positions());
-            DIRTY_POSITIONS.addAll(next.positions());
-        } else {
-            for (long packed : previous.positions()) {
-                if (!next.positions().contains(packed)) DIRTY_POSITIONS.add(packed);
+        if (!previous.equals(next)) {
+            if (Float.compare(previous.modelAlpha(), next.modelAlpha()) != 0) {
+                DIRTY_POSITIONS.addAll(previous.positions());
+                DIRTY_POSITIONS.addAll(next.positions());
+            } else {
+                for (long packed : previous.positions()) {
+                    if (!next.positions().contains(packed)) DIRTY_POSITIONS.add(packed);
+                }
+                for (long packed : next.positions()) {
+                    if (!previous.positions().contains(packed)) DIRTY_POSITIONS.add(packed);
+                }
             }
-            for (long packed : next.positions()) {
-                if (!previous.positions().contains(packed)) DIRTY_POSITIONS.add(packed);
-            }
+            snapshot = next;
         }
-        snapshot = next;
+
+        scheduleDirtySections(client);
+    }
+
+    private static void scheduleDirtySections(Minecraft client) {
+        if (DIRTY_POSITIONS.isEmpty() || client.level == null) return;
+
+        Set<SectionRenderDispatcher.RenderSection> sections = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (long packed : DIRTY_POSITIONS) {
+            SectionRenderDispatcher.RenderSection section = client.levelRenderer
+                    .viewArea()
+                    .getRenderSectionAt(BlockPos.of(packed));
+            if (section != null) sections.add(section);
+        }
+        DIRTY_POSITIONS.clear();
+
+        for (SectionRenderDispatcher.RenderSection section : sections) {
+            section.reset();
+            client.levelRenderer.scheduleSectionCompile(section);
+        }
     }
 
     private static Snapshot buildSnapshot(Minecraft client) {
