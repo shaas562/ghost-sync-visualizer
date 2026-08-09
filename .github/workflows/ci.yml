@@ -18,3 +18,6 @@ jobs:
 
       - name: Inspect Minecraft 26.2 terrain rendering API
         run: docker compose run --rm test sh scripts/inspect-rendering.sh
+
+      - name: Inspect Minecraft 26.2 item rendering API
+        run: docker compose run --rm test sh scripts/inspect-minecraft-gui.sh
