@@ -58,6 +58,12 @@ jar {
     }
 }
 
+// src/test contains a standalone headless smoke program rather than JUnit tests.
+// Keep Gradle's normal build happy while the dedicated JavaExec task runs it.
+tasks.named('test') {
+    failOnNoDiscoveredTests = false
+}
+
 /**
  * Starts the real Sponge Mixin subsystem on Loom's Minecraft 26.2 test runtime,
  * parses the production mixin config, and resolves every critical target/mixin
