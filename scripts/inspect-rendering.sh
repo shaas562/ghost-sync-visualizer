@@ -1,47 +1,46 @@
 #!/bin/sh
 set -eu
 
-CACHE_ROOT="${GRADLE_USER_HOME:-/home/gradle/.gradle}/caches"
+LOOM_ROOT="${GRADLE_USER_HOME:-/home/gradle/.gradle}/caches/fabric-loom"
+MC_JAR=$(find "$LOOM_ROOT" -type f -path '*/minecraft-clientonly-deobf/26.2/*.jar' | head -n 1)
+FABRIC_JAR=$(find "${GRADLE_USER_HOME:-/home/gradle/.gradle}/caches/modules-2/files-2.1" -type f -name 'fabric-renderer-api-v1-*.jar' | head -n 1 || true)
 
-echo '=== Rendering classes ==='
-find "$CACHE_ROOT" -type f -name '*.jar' 2>/dev/null | while IFS= read -r jar_file; do
-    matches=$(jar tf "$jar_file" 2>/dev/null | grep -E '/(BlockRenderDispatcher|ModelBlockRenderer|SectionCompiler|SectionRenderDispatcher|BlockStateModel|SubmitNodeCollector|ChunkSectionLayer|BlockRenderLayerMap)\.class$' || true)
-    if [ -n "$matches" ]; then
-        printf '\n=== %s ===\n%s\n' "$jar_file" "$matches"
-    fi
-done
-
-find_class_jar() {
-    class_path="$1"
-    find "$CACHE_ROOT" -type f -name '*.jar' 2>/dev/null | while IFS= read -r jar_file; do
-        if jar tf "$jar_file" 2>/dev/null | grep -q "^${class_path}\.class$"; then
-            printf '%s\n' "$jar_file"
-            break
-        fi
-    done
-}
+if [ -z "${MC_JAR:-}" ]; then
+    echo 'Minecraft 26.2 deobfuscated client jar not found' >&2
+    exit 1
+fi
 
 print_sig() {
     class_name="$1"
-    class_path=$(printf '%s' "$class_name" | tr '.' '/')
-    class_jar=$(find_class_jar "$class_path" || true)
-    printf '\n--- %s ---\n' "$class_name"
-    if [ -n "$class_jar" ]; then
-        javap -classpath "$class_jar" -p "$class_name" 2>/dev/null || true
-    else
-        echo 'not found'
-    fi
+    printf '\n=== %s ===\n' "$class_name"
+    javap -classpath "$MC_JAR${FABRIC_JAR:+:$FABRIC_JAR}" -p "$class_name" 2>/dev/null || true
+}
+
+print_code() {
+    class_name="$1"
+    method="$2"
+    printf '\n=== bytecode %s.%s ===\n' "$class_name" "$method"
+    javap -classpath "$MC_JAR${FABRIC_JAR:+:$FABRIC_JAR}" -c -p "$class_name" 2>/dev/null \
+        | sed -n "/${method}(/,/^[[:space:]]*\(public\|private\|protected\) /p" \
+        | head -n 420 || true
 }
 
 for class_name in \
-    net.minecraft.client.renderer.block.BlockRenderDispatcher \
+    net.minecraft.client.renderer.block.BlockQuadOutput \
     net.minecraft.client.renderer.block.ModelBlockRenderer \
+    net.minecraft.client.renderer.block.BlockStateModelSet \
+    net.minecraft.client.renderer.block.dispatch.BlockStateModel \
+    net.minecraft.client.renderer.block.dispatch.BlockStateModelPart \
     net.minecraft.client.renderer.chunk.SectionCompiler \
-    net.minecraft.client.renderer.chunk.SectionRenderDispatcher \
-    net.minecraft.client.renderer.block.model.BlockStateModel \
-    net.minecraft.client.renderer.SubmitNodeCollector \
+    net.minecraft.client.renderer.chunk.RenderSectionRegion \
     net.minecraft.client.renderer.chunk.ChunkSectionLayer \
-    net.fabricmc.fabric.api.client.rendering.v1.BlockRenderLayerMap
+    com.mojang.blaze3d.vertex.QuadInstance \
+    net.minecraft.client.resources.model.geometry.BakedQuad \
+    net.fabricmc.fabric.api.client.renderer.v1.render.ChunkSectionLayerMap \
+    net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModel
 do
     print_sig "$class_name"
 done
+
+print_code net.minecraft.client.renderer.chunk.SectionCompiler compile
+print_code net.minecraft.client.renderer.block.ModelBlockRenderer tesselateBlock
