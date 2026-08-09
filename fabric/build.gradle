@@ -33,6 +33,11 @@ dependencies {
 
     implementation project(':core')
     include project(':core')
+
+    testImplementation platform('org.junit:junit-bom:5.13.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly "net.fabricmc:fabric-loader-junit:${project.loader_version}"
 }
 
 processResources {
@@ -58,23 +63,17 @@ jar {
     }
 }
 
-// src/test contains a standalone headless smoke program rather than JUnit tests.
-// Keep Gradle's normal build happy while the dedicated JavaExec task runs it.
 tasks.named('test') {
-    failOnNoDiscoveredTests = false
+    useJUnitPlatform()
+    classpath += sourceSets.client.output
 }
 
-/**
- * Starts the real Sponge Mixin subsystem on Loom's Minecraft 26.2 test runtime,
- * parses the production mixin config, and resolves every critical target/mixin
- * class without starting Minecraft or creating a graphics context.
- */
-tasks.register('headlessMixinBootstrap', JavaExec) {
+// Fabric Loader's JUnit module owns Knot/Mixin bootstrap for this task. Keeping
+// a dedicated task name makes the root verification pipeline explicit.
+tasks.register('headlessMixinBootstrap') {
     group = 'verification'
-    description = 'Bootstraps Mixin and validates production client mixin/target class loading without launching Minecraft.'
-    dependsOn tasks.named('testClasses')
-    classpath = sourceSets.test.runtimeClasspath + sourceSets.client.output
-    mainClass = 'com.ghostsync.fabric.HeadlessMixinBootstrapProbe'
+    description = 'Runs the Fabric Loader JUnit headless Knot/Mixin integration probe.'
+    dependsOn tasks.named('test')
 }
 
 /** Copies the Minecraft 26.2 Fabric jar produced by Loom 1.17 into dist. */
