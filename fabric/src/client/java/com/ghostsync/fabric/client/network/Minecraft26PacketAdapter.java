@@ -8,6 +8,7 @@ import com.ghostsync.fabric.client.GhostSyncRuntime;
 import com.ghostsync.fabric.client.config.GhostSyncConfigManager;
 import java.util.List;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.core.BlockPos;
@@ -17,6 +18,7 @@ import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.network.protocol.game.ClientboundForgetLevelChunkPacket;
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket;
+import net.minecraft.network.protocol.game.ClientboundSetCursorItemPacket;
 import net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -92,6 +94,16 @@ public final class Minecraft26PacketAdapter {
         List<ItemStack> items = packet.items();
         int count = Math.min(items.size(), menu.slots.size());
         for (int slot = 0; slot < count; slot++) recordSlot(menu, slot, items.get(slot), sequence);
+        recordCursor(menu, packet.carriedItem(), sequence);
+    }
+
+    public static void afterSetCursorItem(ClientboundSetCursorItemPacket packet) {
+        if (!GhostSyncConfigManager.current().shouldDetectItems()) return;
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || client.gui.screen() instanceof CreativeModeInventoryScreen) return;
+        AbstractContainerMenu menu = client.player.containerMenu;
+        long sequence = GhostSyncRuntime.nextServerSequence();
+        recordCursor(menu, packet.contents(), sequence);
     }
 
     public static void afterPlayerInventory(ClientboundSetPlayerInventoryPacket packet) {
@@ -122,6 +134,13 @@ public final class Minecraft26PacketAdapter {
         GhostSyncRuntime.DETECTION.slots().receiveAuthoritativeState(key, presence(serverStack), sequence);
         GhostSyncRuntime.DETECTION.slots().observeClientAfterAuthoritativeState(
                 key, presence(menu.getSlot(slot).getItem()), sequence);
+    }
+
+    private static void recordCursor(AbstractContainerMenu menu, ItemStack serverStack, long sequence) {
+        SlotKey key = GhostSlotKeys.forCursor(menu);
+        GhostSyncRuntime.DETECTION.slots().receiveAuthoritativeState(key, presence(serverStack), sequence);
+        GhostSyncRuntime.DETECTION.slots().observeClientAfterAuthoritativeState(
+                key, presence(menu.getCarried()), sequence);
     }
 
     private static BlockKey blockKey(ClientLevel level, BlockPos pos) {

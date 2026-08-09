@@ -25,6 +25,7 @@ public final class GhostSyncLifecycleTracker {
     private static ClientLevel previousLevel;
     private static AbstractContainerMenu previousMenu;
     private static long previousMenuEpoch;
+    private static Presence previousCarriedPresence;
     private static boolean blockDetectionEnabled;
     private static boolean itemDetectionEnabled;
 
@@ -64,6 +65,7 @@ public final class GhostSyncLifecycleTracker {
         if (client.player == null) {
             previousMenu = null;
             previousMenuEpoch = 0;
+            previousCarriedPresence = null;
             PREVIOUS_MENU_PRESENCE.clear();
             PREVIOUS_PLAYER_INVENTORY_PRESENCE.clear();
             return;
@@ -74,12 +76,14 @@ public final class GhostSyncLifecycleTracker {
             forgetPreviousMenu();
             previousMenu = currentMenu;
             previousMenuEpoch = GhostSyncRuntime.containerEpoch(currentMenu);
+            previousCarriedPresence = null;
             PREVIOUS_MENU_PRESENCE.clear();
         }
 
         if (config.shouldDetectItems()) {
             observeCurrentMenu(currentMenu);
             observePlayerInventory(client.player.getInventory());
+            observeCarried(currentMenu);
         }
     }
 
@@ -132,6 +136,13 @@ public final class GhostSyncLifecycleTracker {
         }
     }
 
+    private static void observeCarried(AbstractContainerMenu menu) {
+        Presence presence = menu.getCarried().isEmpty() ? Presence.ABSENT : Presence.PRESENT;
+        if (previousCarriedPresence == presence) return;
+        previousCarriedPresence = presence;
+        GhostSyncRuntime.DETECTION.slots().observeClientState(GhostSlotKeys.forCursor(menu), presence);
+    }
+
     private static void forgetPreviousMenu() {
         if (previousMenu == null) return;
         GhostSyncRuntime.DETECTION.closeContainer(
@@ -140,12 +151,14 @@ public final class GhostSyncLifecycleTracker {
                 previousMenu.containerId);
         GhostSyncRuntime.forgetContainer(previousMenu);
         PREVIOUS_MENU_PRESENCE.clear();
+        previousCarriedPresence = null;
     }
 
     private static void resetLocalSnapshots() {
         previousLevel = null;
         previousMenu = null;
         previousMenuEpoch = 0;
+        previousCarriedPresence = null;
         PREVIOUS_MENU_PRESENCE.clear();
         PREVIOUS_PLAYER_INVENTORY_PRESENCE.clear();
     }

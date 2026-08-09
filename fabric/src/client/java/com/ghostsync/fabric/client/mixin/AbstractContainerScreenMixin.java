@@ -6,13 +6,14 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Carries confirmed-slot visual state through GUI extraction. */
+/** Carries confirmed slot/cursor visual state through deferred GUI extraction. */
 @Mixin(AbstractContainerScreen.class)
 abstract class AbstractContainerScreenMixin {
     @Shadow
@@ -40,5 +41,34 @@ abstract class AbstractContainerScreenMixin {
         } finally {
             GhostItemRenderContext.end();
         }
+    }
+
+    @Inject(method = "extractCarriedItem", at = @At("HEAD"))
+    private void ghostsync$beforeExtractCarriedItem(
+            GuiGraphicsExtractor graphics,
+            int mouseX,
+            int mouseY,
+            CallbackInfo ci) {
+        GhostItemRenderContext.beginCursor(getMenu());
+    }
+
+    @Inject(method = "extractCarriedItem", at = @At("TAIL"))
+    private void ghostsync$afterExtractCarriedItem(
+            GuiGraphicsExtractor graphics,
+            int mouseX,
+            int mouseY,
+            CallbackInfo ci) {
+        GhostItemRenderContext.end();
+    }
+
+    @Inject(method = "extractFloatingItem", at = @At("TAIL"))
+    private void ghostsync$afterExtractFloatingItem(
+            GuiGraphicsExtractor graphics,
+            ItemStack stack,
+            int x,
+            int y,
+            String label,
+            CallbackInfo ci) {
+        GhostItemOverlay.extractCursor(graphics, x, y);
     }
 }

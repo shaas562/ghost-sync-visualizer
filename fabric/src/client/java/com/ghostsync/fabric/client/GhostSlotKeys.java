@@ -6,8 +6,11 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 
-/** Normalizes every visible menu slot onto exactly one detection identity. */
+/** Normalizes every visible menu item surface onto exactly one detection identity. */
 public final class GhostSlotKeys {
+    /** Reserved non-negative index outside every real menu slot range. */
+    public static final int CURSOR_SLOT_INDEX = Integer.MAX_VALUE;
+
     private GhostSlotKeys() {}
 
     public static SlotKey forMenuSlot(AbstractContainerMenu menu, int slotIndex) {
@@ -28,6 +31,18 @@ public final class GhostSlotKeys {
                 GhostSyncRuntime.containerEpoch(menu),
                 menu.containerId,
                 slotIndex);
+    }
+
+    /**
+     * The carried/cursor stack belongs to the currently open menu lifecycle and
+     * is invalidated by the same container close/epoch boundary as its menu.
+     */
+    public static SlotKey forCursor(AbstractContainerMenu menu) {
+        return new SlotKey(
+                GhostSyncRuntime.connectionEpoch(),
+                GhostSyncRuntime.containerEpoch(menu),
+                menu.containerId,
+                CURSOR_SLOT_INDEX);
     }
 
     public static boolean isPlayerInventoryBacked(AbstractContainerMenu menu, int slotIndex) {

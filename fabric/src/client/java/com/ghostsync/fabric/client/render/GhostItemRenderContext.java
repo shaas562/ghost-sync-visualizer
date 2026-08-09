@@ -4,23 +4,39 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 
 /**
- * Short-lived extraction context. Minecraft creates the TrackingItemStackRenderState
- * while AbstractContainerScreen extracts a slot, then renders that state later.
+ * Short-lived extraction context. Minecraft creates TrackingItemStackRenderState
+ * objects while a container screen extracts slots/cursor items, then renders
+ * those states later.
  */
 public final class GhostItemRenderContext {
-    private static final ThreadLocal<Float> ALPHA = ThreadLocal.withInitial(() -> 1.0f);
+    private static final ThreadLocal<State> STATE = ThreadLocal.withInitial(State::normal);
 
     private GhostItemRenderContext() {}
 
     public static void begin(AbstractContainerMenu menu, Slot slot) {
-        ALPHA.set(GhostItemOverlay.modelAlpha(menu, slot));
+        STATE.set(new State(GhostItemOverlay.modelAlpha(menu, slot), false));
+    }
+
+    public static void beginCursor(AbstractContainerMenu menu) {
+        boolean ghost = GhostItemOverlay.isConfirmedCursor(menu);
+        STATE.set(new State(GhostItemOverlay.cursorModelAlpha(menu), ghost));
     }
 
     public static float currentAlpha() {
-        return ALPHA.get();
+        return STATE.get().alpha();
+    }
+
+    public static boolean isCursorGhost() {
+        return STATE.get().cursorGhost();
     }
 
     public static void end() {
-        ALPHA.remove();
+        STATE.remove();
+    }
+
+    private record State(float alpha, boolean cursorGhost) {
+        private static State normal() {
+            return new State(1.0f, false);
+        }
     }
 }

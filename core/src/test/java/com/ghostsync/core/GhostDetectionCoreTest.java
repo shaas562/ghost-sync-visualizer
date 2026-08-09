@@ -34,16 +34,19 @@ class GhostDetectionCoreTest {
     }
 
     @Test
-    void closingContainerNeverDropsConnectionScopedPlayerInventory() {
+    void closingContainerDropsCursorButNeverConnectionScopedPlayerInventory() {
         GhostDetectionCore core = new GhostDetectionCore();
         SlotKey containerSlot = new SlotKey(3, 10, 5, 2);
+        SlotKey cursor = new SlotKey(3, 10, 5, Integer.MAX_VALUE);
         SlotKey playerInventorySlot = new SlotKey(3, 0, -1, 8);
 
         confirm(core.slots(), containerSlot, 1);
-        confirm(core.slots(), playerInventorySlot, 2);
+        confirm(core.slots(), cursor, 2);
+        confirm(core.slots(), playerInventorySlot, 3);
 
-        assertEquals(1, core.closeContainer(3, 10, 5));
+        assertEquals(2, core.closeContainer(3, 10, 5));
         assertEquals(SyncState.UNKNOWN, core.slots().getState(containerSlot));
+        assertEquals(SyncState.UNKNOWN, core.slots().getState(cursor));
         assertEquals(SyncState.CONFIRMED_GHOST, core.slots().getState(playerInventorySlot));
     }
 

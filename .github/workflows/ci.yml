@@ -16,9 +16,6 @@ jobs:
       - name: Build and verify in Docker
         run: docker compose run --rm --build test
 
-      - name: Inspect Minecraft 26.2 cursor API
-        run: docker compose run --rm test sh scripts/inspect-cursor.sh
-
       - name: Package installable mod jar in Docker
         run: |
           rm -rf dist
