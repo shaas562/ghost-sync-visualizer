@@ -58,9 +58,9 @@ jar {
     }
 }
 
-/** Copies the remapped, installable Fabric jar into the repository dist folder. */
+/** Copies the Minecraft 26.2 Fabric jar produced by Loom 1.17 into dist. */
 tasks.register('packageMod', Copy) {
-    dependsOn tasks.named('remapJar')
-    from(tasks.named('remapJar').flatMap { it.archiveFile })
+    dependsOn tasks.named('build')
+    from(tasks.named('jar').flatMap { it.archiveFile })
     into(rootProject.layout.projectDirectory.dir('dist'))
 }
