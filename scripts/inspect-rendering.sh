@@ -31,6 +31,9 @@ printf '\n=== render-region candidate classes ===\n'
 jar tf "$MC_JAR" | grep -E 'net/minecraft/client/renderer/chunk/.*(RenderSectionRegion|SectionRegion|RegionBuilder).*\.class$' | head -n 120 || true
 
 for class_name in \
+    net.minecraft.client.Minecraft \
+    net.minecraft.client.renderer.GameRenderer \
+    net.minecraft.client.Camera \
     net.minecraft.client.renderer.LevelRenderer \
     net.minecraft.client.renderer.ViewArea \
     net.minecraft.client.RotatingSectionStorage \
@@ -44,6 +47,10 @@ for class_name in \
 do
     print_sig "$class_name"
 done
+
+printf '\n=== camera-related Minecraft/GameRenderer members ===\n'
+javap -classpath "$CP" -p net.minecraft.client.Minecraft 2>/dev/null | grep -i -E 'camera|blockColors' || true
+javap -classpath "$CP" -p net.minecraft.client.renderer.GameRenderer 2>/dev/null | grep -i camera || true
 
 printf '\n=== LevelRenderer bytecode around compileAsync ===\n'
 javap -classpath "$CP" -c -p net.minecraft.client.renderer.LevelRenderer 2>/dev/null \
