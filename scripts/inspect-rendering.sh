@@ -24,28 +24,28 @@ print_code() {
     printf '\n=== bytecode %s.%s ===\n' "$class_name" "$method"
     javap -classpath "$CP" -c -p "$class_name" 2>/dev/null \
         | sed -n "/${method}(/,/^[[:space:]]*\(public\|private\|protected\) /p" \
-        | head -n 500 || true
+        | head -n 360 || true
 }
 
 for class_name in \
-    net.minecraft.client.Minecraft \
-    net.minecraft.client.resources.model.ModelManager \
-    net.minecraft.client.resources.model.geometry.BakedQuad \
-    'net.minecraft.client.resources.model.geometry.BakedQuad$MaterialInfo' \
-    net.minecraft.client.renderer.block.BlockQuadOutput \
-    net.minecraft.client.renderer.block.BlockStateModelSet \
-    net.minecraft.client.renderer.block.dispatch.BlockStateModel \
-    net.minecraft.client.renderer.block.dispatch.BlockStateModelPart \
+    net.minecraft.client.renderer.LevelRenderer \
+    net.minecraft.client.renderer.chunk.SectionRenderDispatcher \
+    'net.minecraft.client.renderer.chunk.SectionRenderDispatcher$RenderSection' \
     net.minecraft.client.renderer.chunk.SectionCompiler \
     net.minecraft.client.renderer.chunk.ChunkSectionLayer \
+    net.minecraft.client.resources.model.geometry.BakedQuad \
+    'net.minecraft.client.resources.model.geometry.BakedQuad$MaterialInfo' \
     com.mojang.blaze3d.vertex.QuadInstance \
     com.mojang.blaze3d.vertex.VertexConsumer \
-    com.mojang.blaze3d.vertex.BufferBuilder \
-    net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModel
+    net.minecraft.util.ARGB \
+    net.minecraft.util.FastColor \
+    'net.minecraft.util.FastColor$ARGB32'
 do
     print_sig "$class_name"
 done
 
+print_code com.mojang.blaze3d.vertex.QuadInstance setColor
+print_code com.mojang.blaze3d.vertex.VertexConsumer putBlockBakedQuad
+print_code net.minecraft.client.renderer.LevelRenderer setSectionDirty
+print_code net.minecraft.client.renderer.LevelRenderer setBlockDirty
 print_code net.minecraft.client.renderer.chunk.SectionCompiler 'lambda$compile$0'
-print_code net.minecraft.client.renderer.chunk.SectionCompiler 'lambda$compile$1'
-print_code net.minecraft.client.renderer.chunk.SectionCompiler compile
