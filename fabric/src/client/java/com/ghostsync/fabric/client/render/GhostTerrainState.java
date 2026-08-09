@@ -43,10 +43,14 @@ public final class GhostTerrainState {
         return snapshot.positions().contains(pos.asLong());
     }
 
-    public static synchronized void clear() {
-        Snapshot previous = snapshot;
-        if (!previous.positions().isEmpty()) DIRTY_POSITIONS.addAll(previous.positions());
+    /**
+     * Clears render-only state when the world identity itself changes. Old
+     * positions must not be rebuilt in the next world just because coordinates
+     * happen to be reused there.
+     */
+    public static synchronized void discardForWorldChange() {
         snapshot = Snapshot.EMPTY;
+        DIRTY_POSITIONS.clear();
     }
 
     private static synchronized void refresh(Minecraft client) {
