@@ -34,10 +34,24 @@ class GhostDetectionCoreTest {
     }
 
     @Test
+    void closingContainerNeverDropsConnectionScopedPlayerInventory() {
+        GhostDetectionCore core = new GhostDetectionCore();
+        SlotKey containerSlot = new SlotKey(3, 10, 5, 2);
+        SlotKey playerInventorySlot = new SlotKey(3, 0, -1, 8);
+
+        confirm(core.slots(), containerSlot, 1);
+        confirm(core.slots(), playerInventorySlot, 2);
+
+        assertEquals(1, core.closeContainer(3, 10, 5));
+        assertEquals(SyncState.UNKNOWN, core.slots().getState(containerSlot));
+        assertEquals(SyncState.CONFIRMED_GHOST, core.slots().getState(playerInventorySlot));
+    }
+
+    @Test
     void worldResetKeepsSlotTrackingButConnectionResetClearsEverything() {
         GhostDetectionCore core = new GhostDetectionCore();
         BlockKey block = new BlockKey(1, 1, "minecraft:overworld", 0, 64, 0);
-        SlotKey slot = new SlotKey(1, 1, 0, 3);
+        SlotKey slot = new SlotKey(1, 0, -1, 3);
 
         confirm(core.blocks(), block, 1);
         confirm(core.slots(), slot, 1);
