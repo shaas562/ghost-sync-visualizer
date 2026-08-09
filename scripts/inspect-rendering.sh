@@ -67,3 +67,5 @@ print_code 'net.minecraft.client.renderer.chunk.SectionRenderDispatcher$RenderSe
 print_code 'net.minecraft.client.renderer.chunk.SectionRenderDispatcher$RenderSection' compileSync
 print_code com.mojang.blaze3d.vertex.QuadInstance multiplyColor
 print_code com.mojang.blaze3d.vertex.QuadInstance scaleColor
+
+printf '\n=== diagnostics revision: camera-accessor-v2 ===\n'
