@@ -1,6 +1,7 @@
 package com.ghostsync.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,17 +23,17 @@ class GhostTrackerTest {
     }
 
     @Test
-    void matchingAbsentStatesAreMatched() {
+    void matchingAbsentStatesAreMatchedAfterServerApply() {
         tracker.receiveAuthoritativeState("block", Presence.ABSENT, 1);
-        tracker.observeClientState("block", Presence.ABSENT);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.ABSENT, 1);
 
         assertEquals(SyncState.MATCHED, tracker.getState("block"));
     }
 
     @Test
-    void matchingPresentStatesAreMatched() {
+    void matchingPresentStatesAreMatchedAfterServerApply() {
         tracker.receiveAuthoritativeState("block", Presence.PRESENT, 1);
-        tracker.observeClientState("block", Presence.PRESENT);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.PRESENT, 1);
 
         assertEquals(SyncState.MATCHED, tracker.getState("block"));
     }
@@ -40,7 +41,7 @@ class GhostTrackerTest {
     @Test
     void localMutationRequiresNewAuthoritativeEvidence() {
         tracker.receiveAuthoritativeState("block", Presence.ABSENT, 1);
-        tracker.observeClientState("block", Presence.ABSENT);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.ABSENT, 1);
 
         tracker.receiveClientMutation("block", Presence.PRESENT);
 
@@ -48,44 +49,66 @@ class GhostTrackerTest {
     }
 
     @Test
-    void freshServerAbsenceConfirmsGhost() {
+    void freshServerAbsenceWithPairedComparisonConfirmsGhost() {
         tracker.receiveAuthoritativeState("block", Presence.ABSENT, 1);
-        tracker.observeClientState("block", Presence.ABSENT);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.ABSENT, 1);
         tracker.receiveClientMutation("block", Presence.PRESENT);
 
         tracker.receiveAuthoritativeState("block", Presence.ABSENT, 2);
-        tracker.observeClientState("block", Presence.PRESENT);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.PRESENT, 2);
 
         assertEquals(SyncState.CONFIRMED_GHOST, tracker.getState("block"));
     }
 
     @Test
+    void freshServerAbsenceWithoutPairedComparisonDoesNotConfirmGhost() {
+        tracker.receiveAuthoritativeState("block", Presence.ABSENT, 1);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.ABSENT, 1);
+        tracker.receiveClientMutation("block", Presence.PRESENT);
+
+        tracker.receiveAuthoritativeState("block", Presence.ABSENT, 2);
+
+        assertEquals(SyncState.PENDING, tracker.getState("block"));
+    }
+
+    @Test
+    void backgroundMismatchNeverConfirmsAgainstOldServerSnapshot() {
+        tracker.receiveAuthoritativeState("block", Presence.ABSENT, 1);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.ABSENT, 1);
+
+        tracker.observeClientState("block", Presence.PRESENT);
+
+        assertEquals(SyncState.PENDING, tracker.getState("block"));
+    }
+
+    @Test
     void freshServerPresenceResolvesPendingMutation() {
         tracker.receiveAuthoritativeState("block", Presence.ABSENT, 1);
-        tracker.observeClientState("block", Presence.ABSENT);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.ABSENT, 1);
         tracker.receiveClientMutation("block", Presence.PRESENT);
 
         tracker.receiveAuthoritativeState("block", Presence.PRESENT, 2);
-        tracker.observeClientState("block", Presence.PRESENT);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.PRESENT, 2);
 
         assertEquals(SyncState.MATCHED, tracker.getState("block"));
     }
 
     @Test
-    void confirmedGhostClearsImmediatelyWhenClientBecomesAbsent() {
+    void confirmedGhostStopsRenderingImmediatelyWhenClientDisappears() {
         tracker.receiveClientMutation("slot", Presence.PRESENT);
         tracker.receiveAuthoritativeState("slot", Presence.ABSENT, 1);
-        tracker.observeClientState("slot", Presence.PRESENT);
+        tracker.observeClientAfterAuthoritativeState("slot", Presence.PRESENT, 1);
         assertEquals(SyncState.CONFIRMED_GHOST, tracker.getState("slot"));
 
         tracker.observeClientState("slot", Presence.ABSENT);
-        assertEquals(SyncState.MATCHED, tracker.getState("slot"));
+
+        assertNotEquals(SyncState.CONFIRMED_GHOST, tracker.getState("slot"));
     }
 
     @Test
     void elapsedTimeCannotConfirmAnything() {
         tracker.receiveAuthoritativeState("slot", Presence.ABSENT, 1);
-        tracker.observeClientState("slot", Presence.ABSENT);
+        tracker.observeClientAfterAuthoritativeState("slot", Presence.ABSENT, 1);
         tracker.receiveClientMutation("slot", Presence.PRESENT);
 
         for (int i = 0; i < 100_000; i++) {
@@ -96,27 +119,52 @@ class GhostTrackerTest {
     @Test
     void pendingActionRequiresSubsequentServerEvidence() {
         tracker.receiveAuthoritativeState("slot", Presence.PRESENT, 1);
-        tracker.observeClientState("slot", Presence.PRESENT);
+        tracker.observeClientAfterAuthoritativeState("slot", Presence.PRESENT, 1);
         tracker.markClientActionPending("slot");
 
         assertEquals(SyncState.PENDING, tracker.getState("slot"));
 
         tracker.receiveAuthoritativeState("slot", Presence.PRESENT, 2);
+        tracker.observeClientAfterAuthoritativeState("slot", Presence.PRESENT, 2);
         assertEquals(SyncState.MATCHED, tracker.getState("slot"));
+    }
+
+    @Test
+    void duplicateServerSequenceCannotSatisfyPendingAction() {
+        tracker.receiveAuthoritativeState("slot", Presence.ABSENT, 5);
+        tracker.observeClientAfterAuthoritativeState("slot", Presence.ABSENT, 5);
+        tracker.receiveClientMutation("slot", Presence.PRESENT);
+
+        tracker.receiveAuthoritativeState("slot", Presence.ABSENT, 5);
+        tracker.observeClientAfterAuthoritativeState("slot", Presence.PRESENT, 5);
+
+        assertEquals(SyncState.PENDING, tracker.getState("slot"));
+    }
+
+    @Test
+    void stalePostApplyComparisonIsIgnored() {
+        tracker.receiveAuthoritativeState("block", Presence.ABSENT, 10);
+        tracker.receiveAuthoritativeState("block", Presence.PRESENT, 11);
+
+        tracker.observeClientAfterAuthoritativeState("block", Presence.PRESENT, 10);
+        assertEquals(SyncState.UNKNOWN, tracker.getState("block"));
+
+        tracker.observeClientAfterAuthoritativeState("block", Presence.PRESENT, 11);
+        assertEquals(SyncState.MATCHED, tracker.getState("block"));
     }
 
     @Test
     void reverseMismatchIsNotCalledGhost() {
         tracker.receiveAuthoritativeState("block", Presence.PRESENT, 1);
-        tracker.observeClientState("block", Presence.ABSENT);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.ABSENT, 1);
 
         assertEquals(SyncState.UNKNOWN, tracker.getState("block"));
     }
 
     @Test
-    void staleRevisionCannotOverrideNewerAuthoritativeState() {
+    void staleServerSequenceCannotOverrideNewerAuthoritativeState() {
         tracker.receiveAuthoritativeState("block", Presence.PRESENT, 10);
-        tracker.observeClientState("block", Presence.PRESENT);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.PRESENT, 10);
         tracker.receiveAuthoritativeState("block", Presence.ABSENT, 9);
 
         assertEquals(SyncState.MATCHED, tracker.getState("block"));
@@ -125,7 +173,7 @@ class GhostTrackerTest {
     @Test
     void invalidationRemovesState() {
         tracker.receiveAuthoritativeState("block", Presence.ABSENT, 1);
-        tracker.observeClientState("block", Presence.PRESENT);
+        tracker.observeClientAfterAuthoritativeState("block", Presence.PRESENT, 1);
         assertEquals(SyncState.CONFIRMED_GHOST, tracker.getState("block"));
 
         tracker.invalidate("block");
@@ -136,9 +184,9 @@ class GhostTrackerTest {
     @Test
     void resetClearsAllWorldState() {
         tracker.receiveAuthoritativeState("a", Presence.ABSENT, 1);
-        tracker.observeClientState("a", Presence.PRESENT);
+        tracker.observeClientAfterAuthoritativeState("a", Presence.PRESENT, 1);
         tracker.receiveAuthoritativeState("b", Presence.PRESENT, 1);
-        tracker.observeClientState("b", Presence.PRESENT);
+        tracker.observeClientAfterAuthoritativeState("b", Presence.PRESENT, 1);
 
         tracker.reset();
 
