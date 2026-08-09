@@ -2,6 +2,7 @@ package com.ghostsync.fabric.client;
 
 import com.ghostsync.core.GhostDetectionCore;
 import com.ghostsync.core.ServerSequenceCounter;
+import com.ghostsync.core.SlotKey;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -12,6 +13,8 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class GhostSyncRuntime {
     public static final GhostDetectionCore DETECTION = new GhostDetectionCore();
+    public static final long PLAYER_INVENTORY_EPOCH = 0L;
+    public static final int PLAYER_INVENTORY_CONTAINER_ID = -1;
 
     private static final AtomicLong REFRESH_GENERATION = new AtomicLong();
     private static final Map<Object, Long> CONTAINER_EPOCHS = new IdentityHashMap<>();
@@ -67,6 +70,15 @@ public final class GhostSyncRuntime {
 
     public static synchronized void forgetContainer(Object menuIdentity) {
         CONTAINER_EPOCHS.remove(menuIdentity);
+    }
+
+    /** Player inventory identity is connection-scoped and never reuses a menu id. */
+    public static SlotKey playerInventoryKey(int slot) {
+        return new SlotKey(
+                connectionEpoch(),
+                PLAYER_INVENTORY_EPOCH,
+                PLAYER_INVENTORY_CONTAINER_ID,
+                slot);
     }
 
     /**

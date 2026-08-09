@@ -13,7 +13,10 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.network.protocol.game.ClientboundForgetLevelChunkPacket;
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket;
+import net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
@@ -56,6 +59,37 @@ public final class Minecraft26PacketAdapter {
         packet.runUpdates((pos, serverState) -> recordBlock(level, pos, serverState, sequence));
     }
 
+    /**
+     * Vanilla invokes ClientLevel.syncBlockState when a prediction ACK retires a
+     * server-verified prediction. The supplied state is Minecraft's retained
+     * known-server state, so this is authoritative evidence rather than an ACK guess.
+     */
+    public static void afterPredictedBlockSync(
+            ClientLevel level,
+            BlockPos pos,
+            BlockState knownServerState) {
+        if (!GhostSyncConfigManager.current().shouldDetectBlocks()) {
+            return;
+        }
+        long sequence = GhostSyncRuntime.nextServerSequence();
+        recordBlock(level, pos, knownServerState, sequence);
+    }
+
+    public static void afterForgetLevelChunk(
+            ClientPacketListener listener,
+            ClientboundForgetLevelChunkPacket packet) {
+        ClientLevel level = listener.getLevel();
+        if (level == null) {
+            return;
+        }
+        GhostSyncRuntime.DETECTION.unloadChunk(
+                GhostSyncRuntime.connectionEpoch(),
+                GhostSyncRuntime.worldEpoch(),
+                level.dimension().identifier().toString(),
+                packet.pos().x,
+                packet.pos().z);
+    }
+
     public static void afterContainerSlot(ClientboundContainerSetSlotPacket packet) {
         if (!GhostSyncConfigManager.current().shouldDetectItems() || packet.getSlot() < 0) {
             return;
@@ -86,6 +120,33 @@ public final class Minecraft26PacketAdapter {
         for (int slot = 0; slot < count; slot++) {
             recordSlot(menu, slot, items.get(slot), sequence);
         }
+    }
+
+    public static void afterPlayerInventory(ClientboundSetPlayerInventoryPacket packet) {
+        if (!GhostSyncConfigManager.current().shouldDetectItems() || packet.slot() < 0) {
+            return;
+        }
+
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null) {
+            return;
+        }
+
+        Inventory inventory = client.player.getInventory();
+        if (packet.slot() >= inventory.getContainerSize()) {
+            return;
+        }
+
+        SlotKey key = GhostSyncRuntime.playerInventoryKey(packet.slot());
+        Presence serverPresence = packet.contents().isEmpty() ? Presence.ABSENT : Presence.PRESENT;
+        Presence clientPresence = inventory.getItem(packet.slot()).isEmpty()
+                ? Presence.ABSENT
+                : Presence.PRESENT;
+        long sequence = GhostSyncRuntime.nextServerSequence();
+
+        GhostSyncRuntime.DETECTION.slots().receiveAuthoritativeState(key, serverPresence, sequence);
+        GhostSyncRuntime.DETECTION.slots().observeClientAfterAuthoritativeState(
+                key, clientPresence, sequence);
     }
 
     private static void recordBlock(

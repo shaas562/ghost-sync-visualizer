@@ -3,6 +3,7 @@
   "package": "com.ghostsync.fabric.client.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "ClientLevelMixin",
     "ClientPacketListenerMixin"
   ],
   "injectors": {
