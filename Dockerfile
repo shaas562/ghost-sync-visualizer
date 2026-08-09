@@ -4,9 +4,9 @@ USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends glslang-tools \
     && rm -rf /var/lib/apt/lists/*
-USER gradle
 
 WORKDIR /workspace
-COPY . .
+COPY --chown=gradle:gradle . .
+USER gradle
 
 CMD ["gradle", "--no-daemon", "verifyMilestone1"]
