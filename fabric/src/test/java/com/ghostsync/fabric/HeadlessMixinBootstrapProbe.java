@@ -1,35 +1,27 @@
 package com.ghostsync.fabric;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.InputStream;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.List;
-import org.spongepowered.asm.launch.MixinBootstrap;
-import org.spongepowered.asm.mixin.Mixins;
+import org.junit.jupiter.api.Test;
 
 /**
- * Headless smoke probe for the runtime classpath and Mixin configuration.
- *
- * <p>This deliberately does not initialize Minecraft or create a window. It
- * proves that the Mixin subsystem can bootstrap, the production config is on
- * the runtime classpath, and both target/mixin classes can be resolved from the
- * exact Loom test runtime.</p>
+ * Runs under Fabric Loader's official fabric-loader-junit launcher, which starts
+ * a headless Knot client classloader and Mixin environment without invoking the
+ * Minecraft client main method or creating a graphics window.
  */
-public final class HeadlessMixinBootstrapProbe {
-    private HeadlessMixinBootstrapProbe() {}
-
-    public static void main(String[] args) throws Exception {
-        initializeFabricGlobalPropertiesForHeadlessLaunch();
-        MixinBootstrap.init();
-        Mixins.addConfiguration("ghostsync.client.mixins.json");
+final class HeadlessMixinBootstrapProbe {
+    @Test
+    void productionMixinsAndTargetsResolveInsideHeadlessKnot() throws Exception {
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        assertNotNull(loader);
 
         String config;
-        try (InputStream input = HeadlessMixinBootstrapProbe.class.getClassLoader()
-                .getResourceAsStream("ghostsync.client.mixins.json")) {
-            if (input == null) {
-                throw new IllegalStateException("ghostsync.client.mixins.json is missing from the runtime classpath");
-            }
+        try (InputStream input = loader.getResourceAsStream("ghostsync.client.mixins.json")) {
+            assertNotNull(input, "ghostsync.client.mixins.json is missing from the Knot runtime classpath");
             config = new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }
 
@@ -52,30 +44,14 @@ public final class HeadlessMixinBootstrapProbe {
                 "net.minecraft.client.multiplayer.prediction.BlockStatePredictionHandler",
                 "net.minecraft.client.renderer.item.TrackingItemStackRenderState");
 
-        ClassLoader loader = HeadlessMixinBootstrapProbe.class.getClassLoader();
         for (String mixin : mixins) {
-            if (!config.contains('"' + mixin.substring(mixin.lastIndexOf('.') + 1) + '"')) {
-                throw new IllegalStateException("Mixin is not registered in config: " + mixin);
-            }
-            Class.forName(mixin, false, loader);
+            String simpleName = mixin.substring(mixin.lastIndexOf('.') + 1);
+            assertTrue(config.contains('"' + simpleName + '"'), "Mixin is not registered: " + simpleName);
+            assertNotNull(Class.forName(mixin, false, loader), "Mixin class did not resolve: " + mixin);
         }
+
         for (String target : targets) {
-            Class.forName(target, false, loader);
+            assertNotNull(Class.forName(target, false, loader), "Minecraft target did not resolve: " + target);
         }
-
-        System.out.println("Headless Mixin bootstrap/class-loading probe passed.");
-    }
-
-    /**
-     * Fabric's Mixin global-property service normally receives this map from the
-     * Knot launcher before Mixin starts. A plain Gradle JavaExec has no Knot
-     * launcher, so initialize only that exact launcher-owned property map. This
-     * uses Fabric Loader's own testing-visible state rather than mocking Mixin.
-     */
-    private static void initializeFabricGlobalPropertiesForHeadlessLaunch() throws Exception {
-        Class<?> launcherBase = Class.forName("net.fabricmc.loader.impl.launch.FabricLauncherBase");
-        Method setProperties = launcherBase.getDeclaredMethod("setProperties", java.util.Map.class);
-        setProperties.setAccessible(true);
-        setProperties.invoke(null, new HashMap<String, Object>());
     }
 }
