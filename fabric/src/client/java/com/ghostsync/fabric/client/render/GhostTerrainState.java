@@ -4,6 +4,7 @@ import com.ghostsync.core.BlockKey;
 import com.ghostsync.fabric.client.GhostSyncRuntime;
 import com.ghostsync.fabric.client.config.GhostSyncConfig;
 import com.ghostsync.fabric.client.config.GhostSyncConfigManager;
+import com.ghostsync.fabric.client.mixin.LevelRendererInvoker;
 import java.util.HashSet;
 import java.util.Set;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -85,8 +86,9 @@ public final class GhostTerrainState {
         }
         DIRTY_POSITIONS.clear();
 
+        LevelRendererInvoker renderer = (LevelRendererInvoker) (Object) client.levelRenderer;
         for (SectionCoordinate section : sections) {
-            client.levelRenderer.setSectionDirty(section.x(), section.y(), section.z());
+            renderer.ghostsync$setSectionDirty(section.x(), section.y(), section.z());
         }
     }
 
