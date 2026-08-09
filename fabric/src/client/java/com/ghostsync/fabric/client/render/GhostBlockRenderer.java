@@ -25,26 +25,36 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.StagedVertexBuffer;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 import org.joml.Vector4f;
 
 /**
- * Temporary depth-tested white overlay for confirmed block ghosts.
+ * Depth-tested, model-shaped white overlay for confirmed block ghosts.
  *
- * <p>This deliberately does not implement the transparency slider by drawing
- * through walls. True block transparency is implemented at terrain tessellation
- * time so the original textured model itself becomes translucent.</p>
+ * <p>The overlay reuses the client's currently baked block model, so resource
+ * packs, multipart models and most modded block models retain their real shape.
+ * Original-texture transparency is handled separately during terrain
+ * tessellation; it is never approximated with a through-wall pass.</p>
  */
 public final class GhostBlockRenderer {
     private static final Vector4f COLOR_MODULATOR = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
     private static final Vector3f MODEL_OFFSET = new Vector3f();
     private static final Matrix4f TEXTURE_MATRIX = new Matrix4f();
     private static final StagedVertexBuffer VISIBLE_BUFFER = new StagedVertexBuffer(
-            () -> "Ghost Sync visible block overlay", RenderType.SMALL_BUFFER_SIZE);
+            () -> "Ghost Sync model overlay", RenderType.SMALL_BUFFER_SIZE);
 
     private static volatile FrameState frameState = FrameState.EMPTY;
     private static boolean initialized;
@@ -77,36 +87,67 @@ public final class GhostBlockRenderer {
         long maxDistance = (long) config.blocks.detectionDistanceChunks * 16L;
         long maxDistanceSquared = maxDistance * maxDistance;
 
-        List<BlockBox> boxes = new ArrayList<>();
+        List<ModelQuad> quads = new ArrayList<>();
         for (BlockKey key : GhostSyncRuntime.DETECTION.confirmedGhostBlocks()) {
             if (key.connectionEpoch() != connectionEpoch
                     || key.worldEpoch() != worldEpoch
                     || !key.dimensionId().equals(dimensionId)) continue;
+
             long dx = (long) key.x() - playerX;
             long dz = (long) key.z() - playerZ;
             if (dx * dx + dz * dz > maxDistanceSquared) continue;
-            boxes.add(new BlockBox(key.x(), key.y(), key.z()));
+
+            BlockPos pos = new BlockPos(key.x(), key.y(), key.z());
+            if (!client.level.hasChunkAt(pos)) continue;
+            BlockState state = client.level.getBlockState(pos);
+            if (state.isAir() || state.getRenderShape() != RenderShape.MODEL) continue;
+
+            BlockStateModel model = client.getModelManager().getBlockStateModelSet().get(state);
+            RandomSource random = RandomSource.create(state.getSeed(pos));
+            List<BlockStateModelPart> parts = new ArrayList<>();
+            model.collectParts(random, parts);
+
+            for (BlockStateModelPart part : parts) {
+                addPartQuads(quads, part, pos, null);
+                for (Direction direction : Direction.values()) {
+                    addPartQuads(quads, part, pos, direction);
+                }
+            }
         }
 
-        frameState = new FrameState(List.copyOf(boxes), (float) config.blocks.overlayStrength);
+        frameState = new FrameState(List.copyOf(quads), (float) config.blocks.overlayStrength);
+    }
+
+    private static void addPartQuads(
+            List<ModelQuad> output,
+            BlockStateModelPart part,
+            BlockPos pos,
+            Direction direction) {
+        for (BakedQuad quad : part.getQuads(direction)) {
+            output.add(new ModelQuad(
+                    worldVertex(pos, quad.position0()),
+                    worldVertex(pos, quad.position1()),
+                    worldVertex(pos, quad.position2()),
+                    worldVertex(pos, quad.position3())));
+        }
+    }
+
+    private static Vertex worldVertex(BlockPos pos, Vector3fc vertex) {
+        return new Vertex(
+                pos.getX() + vertex.x(),
+                pos.getY() + vertex.y(),
+                pos.getZ() + vertex.z());
     }
 
     private static void render(LevelRenderContext context) {
         FrameState state = frameState;
-        if (state.boxes().isEmpty() || state.overlayAlpha() <= 0.0f) return;
-        renderLayer(context, RenderPipelines.DEBUG_FILLED_BOX, VISIBLE_BUFFER, state, state.overlayAlpha());
-    }
+        if (state.quads().isEmpty() || state.overlayAlpha() <= 0.0f) return;
 
-    private static void renderLayer(
-            LevelRenderContext context,
-            RenderPipeline pipeline,
-            StagedVertexBuffer stagedBuffer,
-            FrameState state,
-            float alpha) {
+        RenderPipeline pipeline = RenderPipelines.DEBUG_FILLED_BOX;
         VertexFormat format = pipeline.getVertexFormatBinding(0);
         if (format == null) return;
         PrimitiveTopology primitive = pipeline.getPrimitiveTopology();
-        StagedVertexBuffer.Draw stagedDraw = stagedBuffer.appendDraw(
+        StagedVertexBuffer.Draw stagedDraw = VISIBLE_BUFFER.appendDraw(
                 format,
                 primitive,
                 primitive == PrimitiveTopology.QUADS
@@ -117,41 +158,33 @@ public final class GhostBlockRenderer {
         Vec3 camera = context.levelState().cameraRenderState.pos;
         poseStack.pushPose();
         poseStack.translate(-camera.x, -camera.y, -camera.z);
-        VertexConsumer builder = stagedBuffer.getVertexBuilder(stagedDraw);
         Matrix4fc matrix = poseStack.last().pose();
-        for (BlockBox box : state.boxes()) addFilledBox(matrix, builder, box.x(), box.y(), box.z(), alpha);
+        VertexConsumer builder = VISIBLE_BUFFER.getVertexBuilder(stagedDraw);
+        for (ModelQuad quad : state.quads()) {
+            addQuad(matrix, builder, quad, state.overlayAlpha());
+        }
         poseStack.popPose();
 
-        stagedBuffer.upload();
-        StagedVertexBuffer.ExecuteInfo info = stagedBuffer.getExecuteInfo(stagedDraw);
+        VISIBLE_BUFFER.upload();
+        StagedVertexBuffer.ExecuteInfo info = VISIBLE_BUFFER.getExecuteInfo(stagedDraw);
         if (info != null) executeDraw(Minecraft.getInstance(), info, pipeline);
-        stagedBuffer.endFrame();
-    }
-
-    private static void addFilledBox(Matrix4fc matrix, VertexConsumer buffer, float x, float y, float z, float alpha) {
-        float maxX = x + 1.0f;
-        float maxY = y + 1.0f;
-        float maxZ = z + 1.0f;
-        addQuad(buffer, matrix, x, y, maxZ, maxX, y, maxZ, maxX, maxY, maxZ, x, maxY, maxZ, alpha);
-        addQuad(buffer, matrix, maxX, y, z, x, y, z, x, maxY, z, maxX, maxY, z, alpha);
-        addQuad(buffer, matrix, x, y, z, x, y, maxZ, x, maxY, maxZ, x, maxY, z, alpha);
-        addQuad(buffer, matrix, maxX, y, maxZ, maxX, y, z, maxX, maxY, z, maxX, maxY, maxZ, alpha);
-        addQuad(buffer, matrix, x, maxY, maxZ, maxX, maxY, maxZ, maxX, maxY, z, x, maxY, z, alpha);
-        addQuad(buffer, matrix, x, y, z, maxX, y, z, maxX, y, maxZ, x, y, maxZ, alpha);
+        VISIBLE_BUFFER.endFrame();
     }
 
     private static void addQuad(
-            VertexConsumer buffer,
             Matrix4fc matrix,
-            float x1, float y1, float z1,
-            float x2, float y2, float z2,
-            float x3, float y3, float z3,
-            float x4, float y4, float z4,
+            VertexConsumer buffer,
+            ModelQuad quad,
             float alpha) {
-        buffer.addVertex(matrix, x1, y1, z1).setColor(1.0f, 1.0f, 1.0f, alpha);
-        buffer.addVertex(matrix, x2, y2, z2).setColor(1.0f, 1.0f, 1.0f, alpha);
-        buffer.addVertex(matrix, x3, y3, z3).setColor(1.0f, 1.0f, 1.0f, alpha);
-        buffer.addVertex(matrix, x4, y4, z4).setColor(1.0f, 1.0f, 1.0f, alpha);
+        addVertex(matrix, buffer, quad.a(), alpha);
+        addVertex(matrix, buffer, quad.b(), alpha);
+        addVertex(matrix, buffer, quad.c(), alpha);
+        addVertex(matrix, buffer, quad.d(), alpha);
+    }
+
+    private static void addVertex(Matrix4fc matrix, VertexConsumer buffer, Vertex vertex, float alpha) {
+        buffer.addVertex(matrix, vertex.x(), vertex.y(), vertex.z())
+                .setColor(1.0f, 1.0f, 1.0f, alpha);
     }
 
     private static void executeDraw(Minecraft client, StagedVertexBuffer.ExecuteInfo info, RenderPipeline pipeline) {
@@ -160,10 +193,11 @@ public final class GhostBlockRenderer {
         RenderTarget target = client.gameRenderer.mainRenderTarget();
         GpuTextureView color = target.getColorTextureView();
         if (color == null) return;
+
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
                 .createRenderPass(
-                        () -> "Ghost Sync confirmed block overlay",
+                        () -> "Ghost Sync confirmed model overlay",
                         color,
                         Optional.empty(),
                         target.getDepthTextureView(),
@@ -181,8 +215,9 @@ public final class GhostBlockRenderer {
         VISIBLE_BUFFER.close();
     }
 
-    private record BlockBox(int x, int y, int z) {}
-    private record FrameState(List<BlockBox> boxes, float overlayAlpha) {
+    private record Vertex(float x, float y, float z) {}
+    private record ModelQuad(Vertex a, Vertex b, Vertex c, Vertex d) {}
+    private record FrameState(List<ModelQuad> quads, float overlayAlpha) {
         private static final FrameState EMPTY = new FrameState(List.of(), 0.0f);
     }
 }
