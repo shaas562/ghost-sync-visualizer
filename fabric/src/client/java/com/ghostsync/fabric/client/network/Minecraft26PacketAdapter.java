@@ -86,8 +86,8 @@ public final class Minecraft26PacketAdapter {
                 GhostSyncRuntime.connectionEpoch(),
                 GhostSyncRuntime.worldEpoch(),
                 level.dimension().identifier().toString(),
-                packet.pos().x,
-                packet.pos().z);
+                packet.pos().x(),
+                packet.pos().z());
     }
 
     public static void afterContainerSlot(ClientboundContainerSetSlotPacket packet) {
