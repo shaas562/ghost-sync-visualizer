@@ -27,23 +27,36 @@ print_code() {
         | head -n 420 || true
 }
 
+printf '\n=== render-region candidate classes ===\n'
+jar tf "$MC_JAR" | grep -E 'net/minecraft/client/renderer/chunk/.*(RenderSectionRegion|SectionRegion|RegionBuilder).*\.class$' | head -n 120 || true
+
 for class_name in \
+    net.minecraft.client.renderer.LevelRenderer \
     net.minecraft.client.renderer.ViewArea \
     net.minecraft.client.RotatingSectionStorage \
+    net.minecraft.client.renderer.chunk.SectionRenderDispatcher \
     'net.minecraft.client.renderer.chunk.SectionRenderDispatcher$RenderSection' \
+    net.minecraft.client.renderer.chunk.RenderSectionRegion \
+    net.minecraft.client.renderer.chunk.RenderSectionRegionBuilder \
     net.minecraft.client.renderer.chunk.SectionCompiler \
     com.mojang.blaze3d.vertex.QuadInstance \
-    com.mojang.blaze3d.vertex.VertexConsumer \
-    com.mojang.blaze3d.vertex.VertexFormatElement \
-    com.mojang.blaze3d.vertex.DefaultVertexFormat
+    com.mojang.blaze3d.vertex.VertexConsumer
 do
     print_sig "$class_name"
 done
 
-print_code com.mojang.blaze3d.vertex.QuadInstance '<init>'
+printf '\n=== LevelRenderer bytecode around compileAsync ===\n'
+javap -classpath "$CP" -c -p net.minecraft.client.renderer.LevelRenderer 2>/dev/null \
+    | grep -B 60 -A 100 'compileAsync' \
+    | head -n 360 || true
+
+printf '\n=== LevelRenderer bytecode around RenderSectionRegion ===\n'
+javap -classpath "$CP" -c -p net.minecraft.client.renderer.LevelRenderer 2>/dev/null \
+    | grep -B 60 -A 100 'RenderSectionRegion' \
+    | head -n 420 || true
+
+print_code net.minecraft.client.renderer.chunk.SectionRenderDispatcher rebuildSectionSync
+print_code 'net.minecraft.client.renderer.chunk.SectionRenderDispatcher$RenderSection' compileAsync
+print_code 'net.minecraft.client.renderer.chunk.SectionRenderDispatcher$RenderSection' compileSync
 print_code com.mojang.blaze3d.vertex.QuadInstance multiplyColor
 print_code com.mojang.blaze3d.vertex.QuadInstance scaleColor
-print_code com.mojang.blaze3d.vertex.VertexConsumer 'setColor(float'
-print_code net.minecraft.client.renderer.ViewArea setDirty
-print_code net.minecraft.client.renderer.ViewArea getRenderSectionAt
-print_code net.minecraft.client.RotatingSectionStorage setDirty
