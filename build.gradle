@@ -7,8 +7,15 @@ allprojects {
     version = project.mod_version
 }
 
+tasks.register('verifyHeadlessContracts', Exec) {
+    group = 'verification'
+    description = 'Verifies Minecraft 26.2 mixin/API targets, packaged resources, and renderer backend constraints without launching Minecraft.'
+    dependsOn ':fabric:build'
+    commandLine 'sh', 'scripts/verify-headless-contracts.sh'
+}
+
 tasks.register('verifyMilestone1') {
     group = 'verification'
-    description = 'Runs the version-independent core tests and builds the Fabric client module.'
-    dependsOn ':core:test', ':fabric:build'
+    description = 'Runs core safety tests, builds the Fabric module, and verifies headless Minecraft integration contracts.'
+    dependsOn ':core:test', 'verifyHeadlessContracts'
 }
