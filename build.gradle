@@ -16,6 +16,6 @@ tasks.register('verifyHeadlessContracts', Exec) {
 
 tasks.register('verifyMilestone1') {
     group = 'verification'
-    description = 'Runs core safety tests, builds the Fabric module, and verifies headless Minecraft integration contracts.'
-    dependsOn ':core:test', 'verifyHeadlessContracts'
+    description = 'Runs core safety tests, builds Fabric, bootstraps Mixin, and verifies headless Minecraft integration contracts.'
+    dependsOn ':core:test', ':fabric:headlessMixinBootstrap', 'verifyHeadlessContracts'
 }
