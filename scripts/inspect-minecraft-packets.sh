@@ -42,9 +42,24 @@ print_signature() {
     fi
 }
 
+print_method_bytecode() {
+    class_name="$1"
+    method_name="$2"
+    max_lines="$3"
+    class_path=$(printf '%s' "$class_name" | tr '.' '/')
+    class_jar=$(find_class_jar "$class_path" || true)
+    if [ -n "$class_jar" ]; then
+        printf '\n--- %s.%s ---\n' "$class_name" "$method_name"
+        javap -classpath "$class_jar" -c -p "$class_name" 2>/dev/null \
+            | sed -n "/${method_name}(/,/^[[:space:]]*public /p" \
+            | head -n "$max_lines" || true
+    fi
+}
+
 printf '\n=== Candidate signatures ===\n'
 for class_name in \
     net.minecraft.client.multiplayer.ClientPacketListener \
+    net.minecraft.client.multiplayer.prediction.BlockStatePredictionHandler \
     net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket \
     net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket \
     net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket \
@@ -59,21 +74,9 @@ do
     print_signature "$class_name"
 done
 
-printf '\n=== Block acknowledgement bytecode ===\n'
-listener_class='net.minecraft.client.multiplayer.ClientPacketListener'
-listener_path=$(printf '%s' "$listener_class" | tr '.' '/')
-listener_jar=$(find_class_jar "$listener_path" || true)
-if [ -n "$listener_jar" ]; then
-    javap -classpath "$listener_jar" -c -p "$listener_class" 2>/dev/null \
-        | sed -n '/handleBlockChangedAck(/,/^[[:space:]]*public /p' \
-        | head -n 120 || true
-fi
-
-level_class='net.minecraft.client.multiplayer.ClientLevel'
-level_path=$(printf '%s' "$level_class" | tr '.' '/')
-level_jar=$(find_class_jar "$level_path" || true)
-if [ -n "$level_jar" ]; then
-    javap -classpath "$level_jar" -c -p "$level_class" 2>/dev/null \
-        | sed -n '/handleBlockChangedAck(/,/^[[:space:]]*public /p' \
-        | head -n 160 || true
-fi
+printf '\n=== Targeted bytecode ===\n'
+print_method_bytecode net.minecraft.client.multiplayer.ClientPacketListener handleSetPlayerInventory 120
+print_method_bytecode net.minecraft.client.multiplayer.ClientPacketListener handleForgetLevelChunk 120
+print_method_bytecode net.minecraft.client.multiplayer.ClientPacketListener handleBlockChangedAck 120
+print_method_bytecode net.minecraft.client.multiplayer.ClientLevel handleBlockChangedAck 160
+print_method_bytecode net.minecraft.client.multiplayer.prediction.BlockStatePredictionHandler endPredictionsUpTo 240
