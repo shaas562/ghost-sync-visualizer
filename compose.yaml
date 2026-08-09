@@ -1,0 +1,5 @@
+services:
+  test:
+    build:
+      context: .
+    command: gradle --no-daemon verifyMilestone1
