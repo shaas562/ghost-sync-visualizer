@@ -3,6 +3,7 @@ package com.ghostsync.fabric.client.network;
 import com.ghostsync.core.BlockKey;
 import com.ghostsync.core.Presence;
 import com.ghostsync.core.SlotKey;
+import com.ghostsync.fabric.client.GhostSlotKeys;
 import com.ghostsync.fabric.client.GhostSyncRuntime;
 import com.ghostsync.fabric.client.config.GhostSyncConfigManager;
 import java.util.List;
@@ -117,8 +118,7 @@ public final class Minecraft26PacketAdapter {
     }
 
     private static void recordSlot(AbstractContainerMenu menu, int slot, ItemStack serverStack, long sequence) {
-        long menuEpoch = GhostSyncRuntime.containerEpoch(menu);
-        SlotKey key = new SlotKey(GhostSyncRuntime.connectionEpoch(), menuEpoch, menu.containerId, slot);
+        SlotKey key = GhostSlotKeys.forMenuSlot(menu, slot);
         GhostSyncRuntime.DETECTION.slots().receiveAuthoritativeState(key, presence(serverStack), sequence);
         GhostSyncRuntime.DETECTION.slots().observeClientAfterAuthoritativeState(
                 key, presence(menu.getSlot(slot).getItem()), sequence);

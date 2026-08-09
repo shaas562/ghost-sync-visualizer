@@ -25,8 +25,7 @@ public final class GhostSyncLifecycleTracker {
     private static AbstractContainerMenu previousMenu;
     private static long previousMenuEpoch;
 
-    private GhostSyncLifecycleTracker() {
-    }
+    private GhostSyncLifecycleTracker() {}
 
     public static void initialize() {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
@@ -48,9 +47,7 @@ public final class GhostSyncLifecycleTracker {
         ClientLevel currentLevel = client.level;
         if (currentLevel != previousLevel) {
             GhostTerrainState.discardForWorldChange();
-            if (currentLevel != null) {
-                GhostSyncRuntime.beginWorld();
-            }
+            if (currentLevel != null) GhostSyncRuntime.beginWorld();
             previousLevel = currentLevel;
         }
 
@@ -71,24 +68,24 @@ public final class GhostSyncLifecycleTracker {
         }
 
         if (GhostSyncConfigManager.current().shouldDetectItems()) {
-            observeCurrentMenu(currentMenu, previousMenuEpoch);
+            observeCurrentMenu(currentMenu);
             observePlayerInventory(client.player.getInventory());
         }
     }
 
-    private static void observeCurrentMenu(AbstractContainerMenu menu, long menuEpoch) {
+    private static void observeCurrentMenu(AbstractContainerMenu menu) {
         for (int slotIndex = 0; slotIndex < menu.slots.size(); slotIndex++) {
+            // Player inventory is observed once through its stable connection-scoped
+            // identity below. Do not create a second container-scoped key for it.
+            if (GhostSlotKeys.isPlayerInventoryBacked(menu, slotIndex)) continue;
+
             Presence presence = menu.getSlot(slotIndex).getItem().isEmpty()
                     ? Presence.ABSENT
                     : Presence.PRESENT;
             Presence previous = PREVIOUS_MENU_PRESENCE.put(slotIndex, presence);
             if (previous == presence) continue;
 
-            SlotKey key = new SlotKey(
-                    GhostSyncRuntime.connectionEpoch(),
-                    menuEpoch,
-                    menu.containerId,
-                    slotIndex);
+            SlotKey key = GhostSlotKeys.forMenuSlot(menu, slotIndex);
             GhostSyncRuntime.DETECTION.slots().observeClientState(key, presence);
         }
     }
