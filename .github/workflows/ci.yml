@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'agent/**'
+  pull_request:
+
+jobs:
+  docker-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and verify in Docker
+        run: docker compose run --rm --build test
