@@ -5,7 +5,8 @@
   "client": [
     "BlockStatePredictionHandlerMixin",
     "ClientLevelMixin",
-    "ClientPacketListenerMixin"
+    "ClientPacketListenerMixin",
+    "GameRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1
