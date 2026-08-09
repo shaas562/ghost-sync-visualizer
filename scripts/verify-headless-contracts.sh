@@ -21,8 +21,6 @@ assert_method() {
     fi
 }
 
-# Mixin target contracts. These are deliberately exact enough to catch mapping/API drift
-# that Java compilation alone cannot detect because Mixin method names are strings.
 assert_method net.minecraft.client.multiplayer.ClientPacketListener 'handleBlockUpdate('
 assert_method net.minecraft.client.multiplayer.ClientPacketListener 'handleChunkBlocksUpdate('
 assert_method net.minecraft.client.multiplayer.ClientPacketListener 'handleForgetLevelChunk('
@@ -58,7 +56,6 @@ assert_jar_entry 'com/ghostsync/fabric/client/mixin/GuiRendererMixin.class'
 assert_jar_entry 'com/ghostsync/fabric/client/mixin/TrackingItemStackRenderStateMixin.class'
 assert_jar_entry 'com/ghostsync/fabric/client/render/GhostItemSilhouettePipeline.class'
 
-# All registered mixins must have corresponding compiled classes in the output jar.
 for mixin in \
     AbstractContainerScreenMixin \
     BlockStatePredictionHandlerMixin \
@@ -83,10 +80,16 @@ grep -F 'in vec4 vertexColor' "$SHADER" >/dev/null || fail 'shader missing verte
 grep -F 'fragColor = vec4(ColorModulator.rgb * alpha, alpha);' "$SHADER" >/dev/null \
     || fail 'shader no longer emits premultiplied white'
 
+# Compile the actual GLSL with an independent compiler. This catches syntax/type
+# errors that Java/Fabric builds cannot see. -S frag handles Minecraft's .fsh suffix.
+command -v glslangValidator >/dev/null 2>&1 || fail 'glslangValidator is not installed in the verification image'
+glslangValidator -S frag "$SHADER" >/dev/null \
+    || fail 'item white silhouette fragment shader failed standalone GLSL compilation'
+
 # Rendering must remain backend-agnostic: no direct legacy OpenGL calls/imports.
 if grep -R -E 'org\.lwjgl\.opengl|\bGL(11|20|30|40|45)\b|glEnable\(|glDisable\(|glBlend' \
         fabric/src/client/java fabric/src/client/resources >/dev/null 2>&1; then
     fail 'direct OpenGL usage detected; keep rendering on Blaze3D/Fabric abstractions'
 fi
 
-echo 'Headless Minecraft 26.2 contracts verified.'
+echo 'Headless Minecraft 26.2 contracts and GLSL verified.'
