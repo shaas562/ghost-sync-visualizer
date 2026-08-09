@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -38,12 +39,25 @@ public final class GhostSyncBlockInteractionTracker {
             watch(clientLevel, target.relative(hitResult.getDirection()));
             return InteractionResult.PASS;
         });
+
+        AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> {
+            Minecraft client = Minecraft.getInstance();
+            if (!level.isClientSide()
+                    || player != client.player
+                    || !(level instanceof ClientLevel clientLevel)
+                    || !GhostSyncConfigManager.current().shouldDetectBlocks()) {
+                return InteractionResult.PASS;
+            }
+            watch(clientLevel, pos);
+            return InteractionResult.PASS;
+        });
+
         ClientTickEvents.END_CLIENT_TICK.register(GhostSyncBlockInteractionTracker::onEndTick);
     }
 
     private static void watch(ClientLevel level, BlockPos pos) {
         if (!level.hasChunkAt(pos)) return;
-        WATCHED.put(pos.immutable(), new Watch(presence(level, pos), WATCH_TICKS));
+        WATCHED.put(pos.immutable(), new Watch(level, presence(level, pos), WATCH_TICKS));
     }
 
     private static void onEndTick(Minecraft client) {
@@ -52,15 +66,20 @@ public final class GhostSyncBlockInteractionTracker {
             WATCHED.clear();
             return;
         }
+
         Iterator<Map.Entry<BlockPos, Watch>> iterator = WATCHED.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<BlockPos, Watch> entry = iterator.next();
             BlockPos pos = entry.getKey();
             Watch watch = entry.getValue();
-            if (!level.hasChunkAt(pos)) {
+
+            // Position alone is not a world identity. Never carry a short-lived
+            // prediction watch across a respawn/dimension ClientLevel replacement.
+            if (watch.level != level || !level.hasChunkAt(pos)) {
                 iterator.remove();
                 continue;
             }
+
             Presence current = presence(level, pos);
             if (current != watch.lastPresence) {
                 GhostSyncRuntime.DETECTION.blocks().receiveClientMutation(blockKey(level, pos), current);
@@ -83,10 +102,12 @@ public final class GhostSyncBlockInteractionTracker {
     }
 
     private static final class Watch {
+        private final ClientLevel level;
         private Presence lastPresence;
         private int remainingTicks;
 
-        private Watch(Presence lastPresence, int remainingTicks) {
+        private Watch(ClientLevel level, Presence lastPresence, int remainingTicks) {
+            this.level = level;
             this.lastPresence = lastPresence;
             this.remainingTicks = remainingTicks;
         }
