@@ -58,6 +58,19 @@ jar {
     }
 }
 
+/**
+ * Starts the real Sponge Mixin subsystem on Loom's Minecraft 26.2 test runtime,
+ * parses the production mixin config, and resolves every critical target/mixin
+ * class without starting Minecraft or creating a graphics context.
+ */
+tasks.register('headlessMixinBootstrap', JavaExec) {
+    group = 'verification'
+    description = 'Bootstraps Mixin and validates production client mixin/target class loading without launching Minecraft.'
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath + sourceSets.client.output
+    mainClass = 'com.ghostsync.fabric.HeadlessMixinBootstrapProbe'
+}
+
 /** Copies the Minecraft 26.2 Fabric jar produced by Loom 1.17 into dist. */
 tasks.register('packageMod', Copy) {
     dependsOn tasks.named('build')
