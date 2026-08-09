@@ -80,6 +80,7 @@ public final class GhostTracker<K> {
         return entry == null ? SyncState.UNKNOWN : entry.state;
     }
 
+    public synchronized Set<K> trackedKeys() { return Set.copyOf(entries.keySet()); }
     public synchronized Set<K> confirmedGhostKeys() { return Set.copyOf(confirmedGhosts); }
 
     public synchronized void invalidate(K key) {
