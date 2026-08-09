@@ -79,7 +79,7 @@ public final class GhostTerrainState {
         client.levelRenderer.invalidateCompiledGeometry(
                 client.level,
                 client.options,
-                client.gameRenderer.getMainCamera(),
+                client.gameRenderer.mainCamera(),
                 client.getBlockColors());
     }
 
