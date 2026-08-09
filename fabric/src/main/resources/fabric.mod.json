@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "ghostsync",
+  "version": "${version}",
+  "name": "Ghost Sync Visualizer",
+  "description": "Client-side visualizer for confirmed Minecraft client/server ghost items and ghost blocks.",
+  "authors": [
+    "shaas562"
+  ],
+  "contact": {
+    "sources": "https://github.com/shaas562/ghost-sync-visualizer"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.ghostsync.fabric.client.GhostSyncClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
