@@ -23,6 +23,8 @@ A ghost can be confirmed only after fresh server-authoritative evidence is paire
 - Block visuals preserve the baked resource-pack model. Original block alpha and the white model-shaped overlay are independent controls.
 - Item visuals apply original-icon alpha at Minecraft 26.2's final GUI item-atlas blit, so ordinary and special item models—including carried items—use the same transparency path.
 - The item white-overlay pass is independent from original-icon alpha and can be refined without changing detection semantics.
+- The block Performance setting only coalesces expensive terrain-transparency rebuilds: level 1 is most responsive and level 5 favors fewer rebuilds. It never changes packet evidence, confirmation, or the white overlay.
+- Advanced Technical logging reports confirmed block/item additions and removals without changing detector behavior.
 - `K` performs a safe local refresh of tracked state. It does not fake an action or force the server to resend data.
 - Mod Menu 20.0.1 is supported as an optional settings entry point.
 

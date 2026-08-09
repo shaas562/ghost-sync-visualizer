@@ -16,15 +16,15 @@ import net.minecraft.core.BlockPos;
  * <p>The section compiler must not scan the synchronized detection map for every
  * ordinary block. This class reduces the hot-path query to an immutable packed
  * position set plus one alpha value. Minecraft 26.2 no longer exposes the old
- * public per-section dirty API, so the first correct implementation coalesces
- * all transparency changes in a tick into one public geometry invalidation.
- * A narrower section rebuild path can replace this fallback after functional
- * Minecraft testing without changing detection or tessellation semantics.</p>
+ * public per-section dirty API, so transparency changes are coalesced into
+ * public geometry invalidations. The Performance setting controls only this
+ * coalescing cadence; it never changes detection evidence or certainty.</p>
  */
 public final class GhostTerrainState {
     private static volatile Snapshot snapshot = Snapshot.EMPTY;
     private static final Set<Long> DIRTY_POSITIONS = new HashSet<>();
     private static boolean initialized;
+    private static int invalidationCooldownTicks;
 
     private GhostTerrainState() {}
 
@@ -46,11 +46,17 @@ public final class GhostTerrainState {
     public static synchronized void discardForWorldChange() {
         snapshot = Snapshot.EMPTY;
         DIRTY_POSITIONS.clear();
+        invalidationCooldownTicks = 0;
     }
 
     private static synchronized void refresh(Minecraft client) {
+        GhostSyncConfig config = GhostSyncConfigManager.current();
+        if (invalidationCooldownTicks > 0) {
+            invalidationCooldownTicks--;
+        }
+
         Snapshot previous = snapshot;
-        Snapshot next = buildSnapshot(client);
+        Snapshot next = buildSnapshot(client, config);
 
         if (!previous.equals(next)) {
             if (Float.compare(previous.modelAlpha(), next.modelAlpha()) != 0) {
@@ -67,24 +73,38 @@ public final class GhostTerrainState {
             snapshot = next;
         }
 
-        invalidateChangedGeometry(client);
+        invalidateChangedGeometry(client, config.blocks.performanceLevel);
     }
 
-    private static void invalidateChangedGeometry(Minecraft client) {
-        if (DIRTY_POSITIONS.isEmpty() || client.level == null) return;
+    private static void invalidateChangedGeometry(Minecraft client, int performanceLevel) {
+        if (DIRTY_POSITIONS.isEmpty() || client.level == null || invalidationCooldownTicks > 0) {
+            return;
+        }
 
-        // Coalesce any number of ghost/config changes observed during this tick
-        // into a single renderer invalidation instead of rebuilding once per block.
+        // Coalesce any number of ghost/config changes observed during the interval
+        // into one renderer invalidation. Higher performance levels trade a small
+        // amount of transparency-update latency for fewer expensive rebuilds.
         DIRTY_POSITIONS.clear();
         client.levelRenderer.invalidateCompiledGeometry(
                 client.level,
                 client.options,
                 client.gameRenderer.mainCamera(),
                 client.getBlockColors());
+        invalidationCooldownTicks = invalidationIntervalTicks(performanceLevel) - 1;
     }
 
-    private static Snapshot buildSnapshot(Minecraft client) {
-        GhostSyncConfig config = GhostSyncConfigManager.current();
+    private static int invalidationIntervalTicks(int performanceLevel) {
+        return switch (Math.max(1, Math.min(5, performanceLevel))) {
+            case 1 -> 1;
+            case 2 -> 2;
+            case 3 -> 3;
+            case 4 -> 5;
+            case 5 -> 8;
+            default -> throw new AssertionError();
+        };
+    }
+
+    private static Snapshot buildSnapshot(Minecraft client, GhostSyncConfig config) {
         if (client.level == null
                 || client.player == null
                 || !config.shouldDetectBlocks()
