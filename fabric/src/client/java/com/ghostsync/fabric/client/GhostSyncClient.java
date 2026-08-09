@@ -13,6 +13,7 @@ public final class GhostSyncClient implements ClientModInitializer {
         GhostSyncLifecycleTracker.initialize();
         GhostSyncBlockInteractionTracker.initialize();
         GhostSyncKeyMappings.initialize();
+        GhostSyncRefreshController.initialize();
         GhostTerrainState.initialize();
         GhostBlockRenderer.initialize();
     }
