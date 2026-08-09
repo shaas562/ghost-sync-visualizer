@@ -2,6 +2,9 @@ name: Render diagnostics
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - agent/item-white-silhouette
 
 jobs:
   inspect:
@@ -25,6 +28,10 @@ jobs:
         run: |
           docker compose run --rm test sh scripts/inspect-minecraft-gui.sh > inspect-items.txt 2>&1 || true
 
+      - name: Capture item silhouette API
+        run: |
+          docker compose run --rm test sh scripts/inspect-item-silhouette.sh > inspect-item-silhouette.txt 2>&1 || true
+
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
         with:
@@ -33,3 +40,4 @@ jobs:
             compile-client.txt
             inspect-rendering.txt
             inspect-items.txt
+            inspect-item-silhouette.txt
