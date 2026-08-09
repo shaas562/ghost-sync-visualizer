@@ -1,0 +1,35 @@
+name: Render diagnostics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build diagnostic image
+        run: docker compose build test
+
+      - name: Capture compile diagnostics
+        run: |
+          docker compose run --rm test sh -lc 'gradle --no-daemon :fabric:compileClientJava' > compile-client.txt 2>&1 || true
+
+      - name: Capture terrain API
+        run: |
+          docker compose run --rm test sh scripts/inspect-rendering.sh > inspect-rendering.txt 2>&1 || true
+
+      - name: Capture item API
+        run: |
+          docker compose run --rm test sh scripts/inspect-minecraft-gui.sh > inspect-items.txt 2>&1 || true
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-diagnostics
+          path: |
+            compile-client.txt
+            inspect-rendering.txt
+            inspect-items.txt

@@ -1,0 +1,21 @@
+plugins {
+    id 'base'
+}
+
+allprojects {
+    group = project.maven_group
+    version = project.mod_version
+}
+
+tasks.register('verifyHeadlessContracts', Exec) {
+    group = 'verification'
+    description = 'Verifies Minecraft 26.2 mixin/API targets, packaged resources, and renderer backend constraints without launching Minecraft.'
+    dependsOn ':fabric:build'
+    commandLine 'sh', 'scripts/verify-headless-contracts.sh'
+}
+
+tasks.register('verifyMilestone1') {
+    group = 'verification'
+    description = 'Runs core safety tests, builds Fabric, bootstraps Mixin, and verifies headless Minecraft integration contracts.'
+    dependsOn ':core:test', ':fabric:headlessMixinBootstrap', 'verifyHeadlessContracts'
+}

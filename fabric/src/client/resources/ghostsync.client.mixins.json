@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "package": "com.ghostsync.fabric.client.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractContainerScreenMixin",
+    "BlockStatePredictionHandlerMixin",
+    "ClientLevelMixin",
+    "ClientPacketListenerMixin",
+    "GameRendererMixin",
+    "GuiRendererMixin",
+    "SectionCompilerMixin",
+    "TrackingItemStackRenderStateMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

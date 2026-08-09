@@ -1,0 +1,144 @@
+package com.ghostsync.fabric.client.render;
+
+import com.ghostsync.core.BlockKey;
+import com.ghostsync.fabric.client.GhostSyncRuntime;
+import com.ghostsync.fabric.client.config.GhostSyncConfig;
+import com.ghostsync.fabric.client.config.GhostSyncConfigManager;
+import java.util.HashSet;
+import java.util.Set;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+
+/**
+ * Main-thread snapshot consumed by asynchronous terrain compilation.
+ *
+ * <p>The section compiler must not scan the synchronized detection map for every
+ * ordinary block. This class reduces the hot-path query to an immutable packed
+ * position set plus one alpha value. Minecraft 26.2 no longer exposes the old
+ * public per-section dirty API, so transparency changes are coalesced into
+ * public geometry invalidations. The Performance setting controls only this
+ * coalescing cadence; it never changes detection evidence or certainty.</p>
+ */
+public final class GhostTerrainState {
+    private static volatile Snapshot snapshot = Snapshot.EMPTY;
+    private static final Set<Long> DIRTY_POSITIONS = new HashSet<>();
+    private static boolean initialized;
+    private static int invalidationCooldownTicks;
+
+    private GhostTerrainState() {}
+
+    public static synchronized void initialize() {
+        if (initialized) return;
+        initialized = true;
+        ClientTickEvents.END_CLIENT_TICK.register(GhostTerrainState::refresh);
+    }
+
+    public static float modelAlpha(BlockPos pos) {
+        Snapshot current = snapshot;
+        return current.positions().contains(pos.asLong()) ? current.modelAlpha() : 1.0f;
+    }
+
+    public static boolean isTransparentGhost(BlockPos pos) {
+        return snapshot.positions().contains(pos.asLong());
+    }
+
+    public static synchronized void discardForWorldChange() {
+        snapshot = Snapshot.EMPTY;
+        DIRTY_POSITIONS.clear();
+        invalidationCooldownTicks = 0;
+    }
+
+    private static synchronized void refresh(Minecraft client) {
+        GhostSyncConfig config = GhostSyncConfigManager.current();
+        if (invalidationCooldownTicks > 0) {
+            invalidationCooldownTicks--;
+        }
+
+        Snapshot previous = snapshot;
+        Snapshot next = buildSnapshot(client, config);
+
+        if (!previous.equals(next)) {
+            if (Float.compare(previous.modelAlpha(), next.modelAlpha()) != 0) {
+                DIRTY_POSITIONS.addAll(previous.positions());
+                DIRTY_POSITIONS.addAll(next.positions());
+            } else {
+                for (long packed : previous.positions()) {
+                    if (!next.positions().contains(packed)) DIRTY_POSITIONS.add(packed);
+                }
+                for (long packed : next.positions()) {
+                    if (!previous.positions().contains(packed)) DIRTY_POSITIONS.add(packed);
+                }
+            }
+            snapshot = next;
+        }
+
+        invalidateChangedGeometry(client, config.blocks.performanceLevel);
+    }
+
+    private static void invalidateChangedGeometry(Minecraft client, int performanceLevel) {
+        if (DIRTY_POSITIONS.isEmpty() || client.level == null || invalidationCooldownTicks > 0) {
+            return;
+        }
+
+        // Coalesce any number of ghost/config changes observed during the interval
+        // into one renderer invalidation. Higher performance levels trade a small
+        // amount of transparency-update latency for fewer expensive rebuilds.
+        DIRTY_POSITIONS.clear();
+        client.levelRenderer.invalidateCompiledGeometry(
+                client.level,
+                client.options,
+                client.gameRenderer.mainCamera(),
+                client.getBlockColors());
+        invalidationCooldownTicks = invalidationIntervalTicks(performanceLevel) - 1;
+    }
+
+    private static int invalidationIntervalTicks(int performanceLevel) {
+        return switch (Math.max(1, Math.min(5, performanceLevel))) {
+            case 1 -> 1;
+            case 2 -> 2;
+            case 3 -> 3;
+            case 4 -> 5;
+            case 5 -> 8;
+            default -> throw new AssertionError();
+        };
+    }
+
+    private static Snapshot buildSnapshot(Minecraft client, GhostSyncConfig config) {
+        if (client.level == null
+                || client.player == null
+                || !config.shouldDetectBlocks()
+                || config.blocks.transparencyStrength <= 0.0) {
+            return Snapshot.EMPTY;
+        }
+
+        long connectionEpoch = GhostSyncRuntime.connectionEpoch();
+        long worldEpoch = GhostSyncRuntime.worldEpoch();
+        String dimensionId = client.level.dimension().identifier().toString();
+        int playerX = client.player.blockPosition().getX();
+        int playerZ = client.player.blockPosition().getZ();
+        long maxDistance = (long) config.blocks.detectionDistanceChunks * 16L;
+        long maxDistanceSquared = maxDistance * maxDistance;
+
+        Set<Long> positions = new HashSet<>();
+        for (BlockKey key : GhostSyncRuntime.DETECTION.confirmedGhostBlocks()) {
+            if (key.connectionEpoch() != connectionEpoch
+                    || key.worldEpoch() != worldEpoch
+                    || !key.dimensionId().equals(dimensionId)) continue;
+
+            long dx = (long) key.x() - playerX;
+            long dz = (long) key.z() - playerZ;
+            if (dx * dx + dz * dz > maxDistanceSquared) continue;
+
+            BlockPos pos = new BlockPos(key.x(), key.y(), key.z());
+            if (client.level.hasChunkAt(pos)) positions.add(pos.asLong());
+        }
+
+        if (positions.isEmpty()) return Snapshot.EMPTY;
+        return new Snapshot(Set.copyOf(positions), (float) (1.0 - config.blocks.transparencyStrength));
+    }
+
+    private record Snapshot(Set<Long> positions, float modelAlpha) {
+        private static final Snapshot EMPTY = new Snapshot(Set.of(), 1.0f);
+    }
+}

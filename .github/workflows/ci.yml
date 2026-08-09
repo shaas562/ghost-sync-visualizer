@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  docker-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and verify in Docker
+        run: docker compose run --rm --build test
+
+      - name: Package installable mod jar in Docker
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          chmod 0777 dist
+          docker compose run --rm --build package
+
+      - name: Upload Minecraft 26.2 mod jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-sync-visualizer-26.2
+          path: dist/*.jar
+          if-no-files-found: error
