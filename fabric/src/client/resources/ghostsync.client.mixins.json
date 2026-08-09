@@ -8,7 +8,9 @@
     "ClientLevelMixin",
     "ClientPacketListenerMixin",
     "GameRendererMixin",
-    "SectionCompilerMixin"
+    "GuiRendererMixin",
+    "SectionCompilerMixin",
+    "TrackingItemStackRenderStateMixin"
   ],
   "injectors": {
     "defaultRequire": 1

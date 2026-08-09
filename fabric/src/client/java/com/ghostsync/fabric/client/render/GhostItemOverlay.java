@@ -11,13 +11,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 
-/**
- * Temporary read-only white slot overlay for confirmed ghost items.
- *
- * <p>True item transparency and model-shaped whitening are implemented in the
- * item render-state path; the transparency slider is intentionally not faked
- * as an outline or another unrelated effect here.</p>
- */
+/** Read-only visual helpers for item slots already confirmed as ghosts. */
 public final class GhostItemOverlay {
     private static final int WHITE_RGB = 0x00FFFFFF;
 
@@ -28,34 +22,56 @@ public final class GhostItemOverlay {
             AbstractContainerMenu menu,
             Slot slot) {
         GhostSyncConfig config = GhostSyncConfigManager.current();
-        if (!config.shouldDetectItems() || config.items.overlayStrength <= 0.0) return;
+        if (!config.shouldDetectItems()
+                || config.items.overlayStrength <= 0.0
+                || !isConfirmedGhost(menu, slot)) {
+            return;
+        }
 
+        // This pass remains independent from original-icon alpha. A later renderer
+        // pass can replace the rectangle with an atlas-alpha silhouette without
+        // changing certainty or transparency semantics.
+        graphics.fill(
+                slot.x,
+                slot.y,
+                slot.x + 16,
+                slot.y + 16,
+                whiteWithAlpha(config.items.overlayStrength));
+    }
+
+    /** Alpha of the original rendered item model/icon, independent of white overlay. */
+    public static float modelAlpha(AbstractContainerMenu menu, Slot slot) {
+        GhostSyncConfig config = GhostSyncConfigManager.current();
+        if (!config.shouldDetectItems() || !isConfirmedGhost(menu, slot)) {
+            return 1.0f;
+        }
+        return (float) (1.0 - config.items.transparencyStrength);
+    }
+
+    /** Single identity predicate shared by overlay and transparency paths. */
+    public static boolean isConfirmedGhost(AbstractContainerMenu menu, Slot slot) {
         Set<SlotKey> confirmed = GhostSyncRuntime.DETECTION.confirmedGhostSlots();
-        if (confirmed.isEmpty()) return;
+        if (confirmed.isEmpty()) return false;
 
         Minecraft client = Minecraft.getInstance();
         long connectionEpoch = GhostSyncRuntime.connectionEpoch();
         long menuEpoch = GhostSyncRuntime.containerEpoch(menu);
-        boolean ghost = slot.index >= 0 && confirmed.contains(new SlotKey(
+
+        if (slot.index >= 0 && confirmed.contains(new SlotKey(
                 connectionEpoch,
                 menuEpoch,
                 menu.containerId,
-                slot.index));
-
-        if (!ghost && client.player != null) {
-            Inventory inventory = client.player.getInventory();
-            int inventorySlot = slot.getContainerSlot();
-            ghost = slot.container == inventory
-                    && inventorySlot >= 0
-                    && inventorySlot < inventory.getContainerSize()
-                    && confirmed.contains(GhostSyncRuntime.playerInventoryKey(inventorySlot));
+                slot.index))) {
+            return true;
         }
 
-        if (!ghost) return;
-
-        int x = slot.x;
-        int y = slot.y;
-        graphics.fill(x, y, x + 16, y + 16, whiteWithAlpha(config.items.overlayStrength));
+        if (client.player == null) return false;
+        Inventory inventory = client.player.getInventory();
+        int inventorySlot = slot.getContainerSlot();
+        return slot.container == inventory
+                && inventorySlot >= 0
+                && inventorySlot < inventory.getContainerSize()
+                && confirmed.contains(GhostSyncRuntime.playerInventoryKey(inventorySlot));
     }
 
     private static int whiteWithAlpha(double strength) {
