@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - 'agent/**'
   pull_request:
 
 jobs:
@@ -17,5 +16,5 @@ jobs:
       - name: Build and verify in Docker
         run: docker compose run --rm --build test
 
-      - name: Inspect Minecraft 26.2 packet API
+      - name: Inspect Minecraft 26.2 synchronization API
         run: docker compose run --rm inspect-packets
