@@ -1,6 +1,8 @@
 package com.ghostsync.fabric.client.mixin;
 
 import com.ghostsync.fabric.client.render.GhostTerrainState;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import java.util.Map;
@@ -12,13 +14,12 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.SectionCompiler;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
@@ -43,7 +44,12 @@ abstract class SectionCompilerMixin {
         throw new AssertionError();
     }
 
-    @Redirect(
+    /**
+     * MixinExtras lets this wrapper preserve the exact target invocation without
+     * naming Minecraft's client-only BlockAndTintGetter source type in our
+     * compile-time signature. The value is passed straight through unchanged.
+     */
+    @WrapOperation(
             method = "compile",
             at = @At(
                     value = "INVOKE",
@@ -54,14 +60,15 @@ abstract class SectionCompilerMixin {
             float x,
             float y,
             float z,
-            BlockAndTintGetter level,
+            @Coerce Object level,
             BlockPos pos,
             BlockState state,
             BlockStateModel model,
-            long seed) {
+            long seed,
+            Operation<Void> original) {
         float alpha = GhostTerrainState.modelAlpha(pos);
         if (alpha >= 0.9999f) {
-            renderer.tesselateBlock(output, x, y, z, level, pos, state, model, seed);
+            original.call(renderer, output, x, y, z, level, pos, state, model, seed);
             return;
         }
 
@@ -92,12 +99,12 @@ abstract class SectionCompilerMixin {
             }
         };
 
-        renderer.tesselateBlock(ghostOutput, x, y, z, level, pos, state, model, seed);
+        original.call(renderer, ghostOutput, x, y, z, level, pos, state, model, seed);
     }
 
     /**
      * SectionCompiler's force-opaque output lambda ignores the quad's material
-     * layer and always writes to SOLID. When the redirect above is forwarding a
+     * layer and always writes to SOLID. When the wrapper above is forwarding a
      * confirmed ghost quad, write that quad directly to TRANSLUCENT instead.
      */
     @Inject(method = "lambda$compile$1", at = @At("HEAD"), cancellable = true)
